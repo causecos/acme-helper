@@ -1,0 +1,41 @@
+_acme_sh_completion() {
+if [ "$COMP_CWORD" -eq 1 ]; then
+_acme_sh_add_matches "
+--help
+--version
+--install
+--install-online
+--uninstall
+--upgrade
+--issue
+--deploy
+--sign-csr
+--show-csr
+--install-cert
+--renew
+--renew-all
+--revoke
+--remove
+--list
+--list-profiles
+--info
+--to-pkcs12
+--to-pkcs8
+--create-account-key
+--create-domain-key
+--create-csr
+--deactivate
+--update-account
+--register-account
+--deactivate-account
+--make-dns-persist-value
+--install-cronjob
+--uninstall-cronjob
+--cron
+--set-notify
+--set-default-ca
+--set-default-chain
+"
+return 0
+fi
+}
