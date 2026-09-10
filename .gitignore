@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+test-results/
+.env
+account.conf
+*.pem
+*.key
+*.pfx
+*.p12
