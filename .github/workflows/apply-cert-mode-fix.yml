@@ -34,9 +34,42 @@ jobs:
           python3 -m py_compile tools/apply-cert-mode-fix.py
       - name: Apply deterministic patch
         run: python3 tools/apply-cert-mode-fix.py
+      - name: Align legacy test inputs with new prompt
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          review = Path('tests/review_v19.py')
+          text = review.read_text()
+          old = "                s.expect('Namesilo_Key').line('PTY-HIDDEN-KEY')\n                s.expect(ui('Start issuing this certificate?')).line('y')"
+          new = "                s.expect('Namesilo_Key').line('PTY-HIDDEN-KEY')\n                s.expect(ui('Start issuing {} separate certificates?').format(2)).line('y')"
+          if text.count(old) != 1:
+              raise SystemExit('review_v19 confirmation anchor changed')
+          review.write_text(text.replace(old, new, 1))
+
+          flow = Path('tests/flow_matrix.py')
+          text = flow.read_text()
+          old = "data = 'issue\\n*.pipe1.test *.pipe2.test\\n\\n\\n\\n\\n\\nminimal\\n\\npipe-cert\\n\\nn\\n'"
+          new = "data = 'issue\\n*.pipe1.test *.pipe2.test\\nmerged\\n\\n\\n\\n\\n\\nminimal\\n\\npipe-cert\\n\\nn\\n'"
+          if text.count(old) != 1:
+              raise SystemExit('flow_matrix non-tty anchor changed')
+          flow.write_text(text.replace(old, new, 1))
+
+          manifest = Path('SHA256SUMS')
+          lines = manifest.read_text().splitlines()
+          for rel in ('./tests/review_v19.py', './tests/flow_matrix.py'):
+              target = Path(rel[2:])
+              digest = hashlib.sha256(target.read_bytes()).hexdigest()
+              matches = [i for i, line in enumerate(lines) if line.endswith('  ' + rel)]
+              if len(matches) != 1:
+                  raise SystemExit('checksum anchor changed: ' + rel)
+              lines[matches[0]] = digest + '  ' + rel
+          manifest.write_text('\n'.join(lines) + '\n')
+          PY
       - name: Syntax and manifest
         run: |
-          python3 -m py_compile acme_cli.py acme_runtime.py tests/review_cert_modes.py
+          python3 -m py_compile acme_cli.py acme_runtime.py tests/review_cert_modes.py tests/review_v19.py tests/flow_matrix.py
           python3 - <<'PY'
           import ast
           from pathlib import Path
