@@ -19,6 +19,10 @@ jobs:
         uses: actions/checkout@v4
       - name: Verify repository checksums
         run: sha256sum -c SHA256SUMS
+      - name: Prepare system fallback fixture path
+        run: |
+          sudo install -d -m 755 /usr/local/lib/acme
+          sudo chown "$(id -u):$(id -g)" /usr/local/lib/acme
       - name: Run full offline regression
         run: python3 -S tests/run_all.py --report-dir test-results
       - name: Print regression logs on failure
