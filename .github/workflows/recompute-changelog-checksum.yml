@@ -17,22 +17,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: fix/bilingual-changelog
-      - name: Update CHANGELOG checksum
+      - name: Recompute manifest entries
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
-          path = Path('CHANGELOG.md')
-          digest = hashlib.sha256(path.read_bytes()).hexdigest()
           manifest = Path('SHA256SUMS')
-          lines = manifest.read_text().splitlines()
-          target = '  ./CHANGELOG.md'
-          matches = [i for i, line in enumerate(lines) if line.endswith(target)]
-          if len(matches) != 1:
-              raise SystemExit('CHANGELOG checksum entry not unique')
-          lines[matches[0]] = digest + target
+          lines = []
+          for raw in manifest.read_text().splitlines():
+              _, sep, rel = raw.partition('  ')
+              if not sep:
+                  raise SystemExit('invalid manifest line: ' + raw)
+              path = Path(rel[2:] if rel.startswith('./') else rel)
+              if not path.is_file():
+                  raise SystemExit('manifest path missing: ' + rel)
+              lines.append(hashlib.sha256(path.read_bytes()).hexdigest() + '  ' + rel)
           manifest.write_text('\n'.join(lines) + '\n')
-          print('CHANGELOG_SHA256=' + digest)
           PY
           sha256sum -c SHA256SUMS
       - name: Commit checksum
