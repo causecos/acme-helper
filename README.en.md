@@ -37,7 +37,7 @@ acme language en
 
 The menu groups quick DNS issuance, existing certificates, DNS credentials, scheduling/notifications, installation/versions, advanced tools and preferences. Enter a number or an existing command name. `:back` leaves normal input forms; Ctrl-C cancels. Secret input treats `:back` as data. Operations return to the main menu.
 
-The quick wizard asks for domains, lets you search providers with `/term`, and offers credential setup when local values are missing. Installation is a separate explicit operation. Email is optional; new cron installation is off.
+The quick wizard asks for domains. When more than one name is entered it offers `merged` (one SAN certificate) or `separate` (one independent certificate per entered name), then lets you search providers with `/term` and offers credential setup when local values are missing. Installation is a separate explicit operation. Email is optional; new cron installation is off.
 
 ### Copy the resulting CLI for next time
 
@@ -81,6 +81,8 @@ See `CHATGPT_REPAIR_HANDOFF.md`.
 acme install
 acme config dns_cf
 acme -dns dns_cf "example.com *.example.com"
+acme issue --cert-mode merged "example.com *.example.com"
+acme issue --cert-mode separate "example.com *.example.com api.example.com"
 acme certs
 acme certs update "example.com"
 acme cron on
@@ -89,7 +91,7 @@ acme native
 acme diagnose
 ```
 
-Defaults remain Let's Encrypt, dns_namesilo, 120-second DNS wait, ec-256 and minimal PEM output. All names in one issuance share one certificate. A wildcard does not include its base name. `domains.txt` is retained as a requested-SAN manifest, not an authoritative certificate database. Known managed-certificate output collisions are refused.
+Defaults remain Let's Encrypt, dns_namesilo, 120-second DNS wait, ec-256 and minimal PEM output. Multiple names default to `merged`, where all names share one SAN certificate. `--cert-mode separate` issues one certificate per entered name. Wildcard/base pairs receive distinct deterministic output directories (`*.example.com` becomes `wildcard-example.com`); remaining collisions receive `-2`, `-3`, and so on. A shared `--cert-name` is rejected for a multi-certificate separate batch. The batch stops on the first issuance error and does not roll back certificates that already succeeded. A wildcard does not include its base name. `domains.txt` is retained as a requested-SAN manifest, not an authoritative certificate database. Known managed-certificate output collisions are refused.
 
 `update` upgrades upstream acme.sh, not Helper. The pinned target remains 3.1.4; this is not a claim about the latest release. Install another Helper release using its installer.
 

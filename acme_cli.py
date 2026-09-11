@@ -84,6 +84,7 @@ SECRET_OPTIONS = {"--password", "--eab-hmac-key"}
 SHELL_COMMAND_OPTIONS = {"--pre-hook", "--post-hook", "--renew-hook", "--reloadcmd"}
 KEY_LENGTHS = {"ec-256", "ec-384", "ec-521", "2048", "3072", "4096", "8192"}
 OUTPUT_LAYOUTS = {"full", "minimal", "nginx", "none"}
+CERT_MODES = {"merged", "separate"}
 LISTRAW_HEADER = ["Main_Domain", "KeyLength", "SAN_Domains", "Profile", "CA", "Created", "Renew"]
 COMMAND_GUIDANCE = {
     "--help": ('Show the installed acme.sh help.', (), 'Read-only.'),
@@ -963,9 +964,29 @@ def parse_domains(spec):
     return domains
 
 
-def show_domains(domains):
+def validate_cert_mode(value):
+    if value not in CERT_MODES:
+        die(_('certificate mode must be merged or separate: {}').format(value))
+
+
+def choose_cert_mode(domains, current="merged"):
+    validate_cert_mode(current)
+    if len(domains) <= 1:
+        return current
     eprint("")
-    eprint(_('Domains on this certificate (one certificate / one private key):'))
+    eprint(_('Multiple domains detected. Choose how certificates should be grouped.'))
+    return choose_action(_('Certificate mode'), [
+        ("merged", 'One SAN certificate containing all entered names'),
+        ("separate", 'One independent certificate per entered name'),
+    ], current)
+
+
+def show_domains(domains, cert_mode="merged"):
+    eprint("")
+    if cert_mode == "separate" and len(domains) > 1:
+        eprint(_('Domains to issue as separate certificates (one certificate / one private key per name):'))
+    else:
+        eprint(_('Domains on this certificate (one certificate / one private key):'))
     for index, domain in enumerate(domains, 1):
         eprint("  {}. {}".format(index, domain))
     if any(domain.startswith("*.") for domain in domains):
@@ -976,6 +997,32 @@ def sanitize_cert_name(domain):
     name = domain[2:] if domain.startswith("*.") else domain
     name = name.replace("/", "_").replace("\t", "_").replace(" ", "_")
     return name if name not in ("", ".", "..") else "certificate"
+
+
+def separate_cert_names(domains):
+    names = []
+    used = set()
+    for domain in domains:
+        stem = sanitize_cert_name(domain)
+        if domain.startswith("*."):
+            stem = "wildcard-" + stem
+        candidate = stem
+        suffix = 2
+        while candidate.lower() in used:
+            candidate = "{}-{}".format(stem, suffix)
+            suffix += 1
+        used.add(candidate.lower())
+        names.append(candidate)
+    return names
+
+
+def validate_separate_domains(domains):
+    seen = set()
+    for domain in domains:
+        key = domain.lower()
+        if key in seen:
+            die(_('Separate certificate mode requires unique domains; duplicate: {}').format(domain))
+        seen.add(key)
 
 
 def validate_cert_name(name):
@@ -1473,6 +1520,8 @@ def show_cli_shortcut(args, note=None):
 
 def _issue_shortcut_args(result, domains, extra_preview=None):
     args = ["issue", "--server", result["server"], "--keylength", result["keylength"]]
+    if result.get("cert_mode", "merged") != "merged":
+        args.extend(["--cert-mode", result["cert_mode"]])
     mode = result.get("mode", "dns")
     if mode == "dns":
         args.extend(["--dns", result["dns"], "--dnssleep", result["delay"]])
@@ -1496,7 +1545,9 @@ def _issue_shortcut_args(result, domains, extra_preview=None):
         args.append("--dns-persist")
     args.extend(["--output-layout", result["layout"]])
     if result["layout"] != "none":
-        args.extend(["--output-root", result["output_root"], "--cert-name", result["cert_name"]])
+        args.extend(["--output-root", result["output_root"]])
+        if result.get("cert_name"):
+            args.extend(["--cert-name", result["cert_name"]])
     if result.get("reloadcmd"):
         args.extend(["--reloadcmd", result["reloadcmd"]])
     args.append(" ".join(domains))
@@ -1561,6 +1612,7 @@ def parse_issue_cli(args):
         "output_root": DEFAULT_OUTPUT_ROOT,
         "layout": DEFAULT_OUTPUT_LAYOUT,
         "cert_name": "",
+        "cert_mode": "merged",
         "reloadcmd": "",
         "advanced": False,
         "spec": "",
@@ -1572,7 +1624,7 @@ def parse_issue_cli(args):
         arg = args[i]
         if arg in ("-server", "--server", "-dns", "--dns", "-mode", "--validation", "-webroot", "--webroot", "--nginx-config",
                    "-sleep", "-dnssleep", "--dnssleep", "-keylength", "--keylength", "-k", "-out", "--output-root", "-name", "--cert-name",
-                   "-format", "--output-layout", "-reload", "--reloadcmd"):
+                   "-format", "--output-layout", "--cert-mode", "-reload", "--reloadcmd"):
             if i + 1 >= len(args):
                 die(_('{} requires a value').format(arg))
             value = args[i + 1]
@@ -1599,6 +1651,8 @@ def parse_issue_cli(args):
                 result["cert_name"] = value
             elif arg in ("-format", "--output-layout"):
                 result["layout"] = value
+            elif arg == "--cert-mode":
+                result["cert_mode"] = value
             elif arg in ("-reload", "--reloadcmd"):
                 result["reloadcmd"] = value
             i += 2
@@ -1644,14 +1698,16 @@ def guided_issue(result):
     result["interactive"] = True
     eprint("")
     eprint(_('=== Detailed certificate wizard ==='))
-    eprint(_('Supports DNS, webroot, standalone, ALPN, Apache/Nginx, manual DNS, DNS persist and multiple SANs. Enter accepts the default in brackets.'))
+    eprint(_('Supports DNS, webroot, standalone, ALPN, Apache/Nginx, manual DNS, DNS persist, multiple SANs and separate certificates. Enter accepts the default in brackets.'))
     eprint("")
     eprint(_('[1/5] Domains'))
-    eprint(_('  Separate names with spaces; all names share one certificate.'))
+    eprint(_('  Enter one or more names separated by spaces.'))
+    eprint(_('  Multiple names can be merged into one SAN certificate or issued separately.'))
     eprint(_('  Example: example.com *.example.com *.api.example.com'))
     result["spec"] = prompt_validated_required(_('Domains'), parse_domains)
     domains = parse_domains(result["spec"])
-    show_domains(domains)
+    result["cert_mode"] = choose_cert_mode(domains, result.get("cert_mode", "merged"))
+    show_domains(domains, result["cert_mode"])
 
     eprint("")
     eprint(_('[2/5] Validation'))
@@ -1686,8 +1742,12 @@ def guided_issue(result):
     result["layout"] = prompt_validated_default(_('Output layout'), result["layout"], validate_layout)
     if result["layout"] != "none":
         result["output_root"] = prompt_default(_('Output root directory'), result["output_root"])
-        default_name = sanitize_cert_name(domains[0])
-        result["cert_name"] = prompt_validated_default(_('Certificate directory name'), default_name, validate_cert_name)
+        if result["cert_mode"] == "separate" and len(domains) > 1:
+            result["cert_name"] = ""
+            eprint(_('  Separate mode creates one output directory per domain automatically.'))
+        else:
+            default_name = sanitize_cert_name(domains[0])
+            result["cert_name"] = prompt_validated_default(_('Certificate directory name'), default_name, validate_cert_name)
     eprint(_('  reloadcmd is optional. It runs after successful issuance and subsequent successful renewals.'))
     result["reloadcmd"] = prompt_line(_('Reload command (optional): '))
 
@@ -1698,72 +1758,38 @@ def guided_issue(result):
     return domains
 
 
-def issue(args):
-    find_acme_sh()
-    refresh_defaults()
-    result = parse_issue_cli(args)
-    if not result["spec"]:
-        domains = guided_issue(result)
-    else:
-        domains = parse_domains(result["spec"])
+def _issue_plans(result, domains):
+    validate_cert_mode(result.get("cert_mode", "merged"))
+    if result["cert_mode"] == "separate" and len(domains) > 1:
+        if result.get("cert_name"):
+            die(_('--cert-name cannot be used with multiple separate certificates; output directory names are generated per domain'))
+        validate_separate_domains(domains)
+        names = separate_cert_names(domains)
+        return [
+            {"domains": [domain], "cert_name": name,
+             "paths": output_paths(result["output_root"], name, result["layout"])}
+            for domain, name in zip(domains, names)
+        ]
+    name = result.get("cert_name") or sanitize_cert_name(domains[0])
+    return [{"domains": list(domains), "cert_name": name,
+             "paths": output_paths(result["output_root"], name, result["layout"])}]
 
-    if not result["server"]:
-        die(_('server cannot be empty'))
-    validate_choice(result.get("mode", "dns"), {"dns","webroot","standalone","alpn","stateless","apache","nginx","dns-manual","dns-persist"}, "validation mode")
-    if result["mode"] == "dns":
-        if not result["dns"]:
-            die(_('DNS provider cannot be empty'))
-        provider = find_dns_provider(result["dns"])
-        result["dns"] = provider["id"]
-        validate_delay(result["delay"])
-    elif result["mode"] == "webroot" and not result["validation_value"]:
-        die(_('webroot validation requires a path'))
-    validate_keylength(result["keylength"])
-    validate_layout(result["layout"])
-    if result["layout"] != "none" and not result["cert_name"]:
-        result["cert_name"] = sanitize_cert_name(domains[0])
-    if result["cert_name"]:
-        validate_cert_name(result["cert_name"])
 
-    validate_extra_issue_args(result["extra"])
-    extra = list(result["extra"])
-    extra_preview = list(result["extra"])
-    if result["advanced"]:
-        unused_commands, params = parse_upstream_help()
-        selected, preview = parameter_editor(params, skip_managed=True)
-        extra.extend(selected)
-        extra_preview.extend(preview)
-
-    paths = output_paths(result["output_root"], result["cert_name"], result["layout"])
-    show_domains(domains)
+def _show_issue_output_plan(plans, layout, cert_mode):
+    if cert_mode != "separate" or len(plans) == 1:
+        show_output(plans[0]["paths"], layout)
+        return
     eprint("")
-    eprint(_('Issuance settings:'))
-    eprint(_('  server      {}').format(result["server"]))
-    eprint(_('  validation  {}').format(result["mode"]))
-    if result["mode"] == "dns":
-        eprint(_('  dns         {}').format(result["dns"]))
-        eprint(_('  dnssleep    {} seconds').format(result["delay"]))
-    elif result.get("validation_value"):
-        eprint(_('  validation value {}').format(result["validation_value"]))
-    eprint(_('  keylength   {}').format(result["keylength"]))
-    if result["reloadcmd"]:
-        eprint(_('  reloadcmd   {}').format(result["reloadcmd"]))
-    show_output(paths, result["layout"])
-    if extra_preview:
-        eprint(_('  Extra upstream parameters: {}').format(quote_preview(extra_preview)))
+    eprint(_('Output plan:'))
+    for plan in plans:
+        domain = plan["domains"][0]
+        if layout == "none":
+            eprint(_('  {} -> internal acme.sh storage').format(domain))
+        else:
+            eprint(_('  {} -> {}').format(domain, plan["paths"]["dir"]))
 
-    if result["interactive"] and sys.stdin.isatty():
-        shortcut = _issue_shortcut_args(result, domains, extra_preview)
-        note = None
-        if "[hidden]" in shortcut:
-            note = "Secret values are not printed. Replace [hidden] securely before reusing this shortcut."
-        show_cli_shortcut(shortcut, note)
-        if not prompt_yes_no(_('Start issuing the certificate?'), "y"):
-            eprint(_('acme: cancelled'))
-            return 0
 
-    check_output_conflict(paths, domains[0], result["keylength"])
-    ensure_output_dir(paths)
+def _build_issue_command(result, domains, paths, extra):
     cmd = [find_acme_sh(), "--issue", "--server", result["server"], "--keylength", result["keylength"]]
     mode = result["mode"]
     if mode == "dns":
@@ -1799,27 +1825,113 @@ def issue(args):
     if result["reloadcmd"]:
         cmd.extend(["--reloadcmd", result["reloadcmd"]])
     cmd.extend(extra)
+    return cmd
 
-    rc = subprocess.call(cmd)
-    if rc != 0:
-        eprint("")
-        if rc == 2:
-            eprint(_('acme: acme.sh returned 2 (not due / unchanged). No new certificate was issued; inspect the upstream output.'))
+
+def issue(args):
+    find_acme_sh()
+    refresh_defaults()
+    result = parse_issue_cli(args)
+    if not result["spec"]:
+        domains = guided_issue(result)
+    else:
+        domains = parse_domains(result["spec"])
+
+    validate_cert_mode(result.get("cert_mode", "merged"))
+    if not result["server"]:
+        die(_('server cannot be empty'))
+    validate_choice(result.get("mode", "dns"), {"dns","webroot","standalone","alpn","stateless","apache","nginx","dns-manual","dns-persist"}, "validation mode")
+    if result["mode"] == "dns":
+        if not result["dns"]:
+            die(_('DNS provider cannot be empty'))
+        provider = find_dns_provider(result["dns"])
+        result["dns"] = provider["id"]
+        validate_delay(result["delay"])
+    elif result["mode"] == "webroot" and not result["validation_value"]:
+        die(_('webroot validation requires a path'))
+    validate_keylength(result["keylength"])
+    validate_layout(result["layout"])
+    if result.get("cert_name"):
+        validate_cert_name(result["cert_name"])
+
+    validate_extra_issue_args(result["extra"])
+    extra = list(result["extra"])
+    extra_preview = list(result["extra"])
+    if result["advanced"]:
+        unused_commands, params = parse_upstream_help()
+        selected, preview = parameter_editor(params, skip_managed=True)
+        extra.extend(selected)
+        extra_preview.extend(preview)
+
+    plans = _issue_plans(result, domains)
+    show_domains(domains, result["cert_mode"])
+    eprint("")
+    eprint(_('Issuance settings:'))
+    eprint(_('  server      {}').format(result["server"]))
+    eprint(_('  certificate mode {}').format(result["cert_mode"]))
+    eprint(_('  validation  {}').format(result["mode"]))
+    if result["mode"] == "dns":
+        eprint(_('  dns         {}').format(result["dns"]))
+        eprint(_('  dnssleep    {} seconds').format(result["delay"]))
+    elif result.get("validation_value"):
+        eprint(_('  validation value {}').format(result["validation_value"]))
+    eprint(_('  keylength   {}').format(result["keylength"]))
+    if result["reloadcmd"]:
+        eprint(_('  reloadcmd   {}').format(result["reloadcmd"]))
+    _show_issue_output_plan(plans, result["layout"], result["cert_mode"])
+    if extra_preview:
+        eprint(_('  Extra upstream parameters: {}').format(quote_preview(extra_preview)))
+
+    if result["interactive"] and sys.stdin.isatty():
+        shortcut = _issue_shortcut_args(result, domains, extra_preview)
+        note = None
+        if "[hidden]" in shortcut:
+            note = "Secret values are not printed. Replace [hidden] securely before reusing this shortcut."
+        show_cli_shortcut(shortcut, note)
+        if result["cert_mode"] == "separate" and len(plans) > 1:
+            confirmed = prompt_yes_no(_('Start issuing {} separate certificates?').format(len(plans)), "y")
         else:
-            eprint(_('acme: certificate issue failed, acme.sh exit={}').format(rc))
-        return rc
+            confirmed = prompt_yes_no(_('Start issuing the certificate?'), "y")
+        if not confirmed:
+            eprint(_('acme: cancelled'))
+            return 0
 
-    try:
-        write_domains_manifest(paths, domains)
-    except Exception as exc:
-        eprint(_('acme: warning: certificate succeeded but domains.txt could not be written: {}').format(exc))
+    for plan in plans:
+        check_output_conflict(plan["paths"], plan["domains"][0], result["keylength"])
+
+    completed = 0
+    for index, plan in enumerate(plans, 1):
+        if len(plans) > 1:
+            eprint("")
+            eprint(_('Issuing certificate {}/{}: {}').format(index, len(plans), plan["domains"][0]))
+        ensure_output_dir(plan["paths"])
+        rc = subprocess.call(_build_issue_command(result, plan["domains"], plan["paths"], extra))
+        if rc != 0:
+            eprint("")
+            if len(plans) > 1:
+                eprint(_('acme: certificate {}/{} failed for {}, acme.sh exit={}').format(index, len(plans), plan["domains"][0], rc))
+                if completed:
+                    eprint(_('acme: batch stopped after {}/{} certificates succeeded; successful certificates remain managed and are not rolled back.').format(completed, len(plans)))
+            elif rc == 2:
+                eprint(_('acme: acme.sh returned 2 (not due / unchanged). No new certificate was issued; inspect the upstream output.'))
+            else:
+                eprint(_('acme: certificate issue failed, acme.sh exit={}').format(rc))
+            return rc
+        try:
+            write_domains_manifest(plan["paths"], plan["domains"])
+        except Exception as exc:
+            eprint(_('acme: warning: certificate succeeded but domains.txt could not be written: {}').format(exc))
+        completed += 1
+
     eprint("")
     eprint(_('=== Complete ==='))
-    eprint(_('Certificate issued successfully.'))
+    if len(plans) > 1:
+        eprint(_('{} separate certificates issued successfully.').format(len(plans)))
+    else:
+        eprint(_('Certificate issued successfully.'))
     eprint(_('Check renewal scheduling with acme cron status. New installations leave cron off; enable it explicitly or schedule manual renewal.'))
-    show_output(paths, result["layout"])
+    _show_issue_output_plan(plans, result["layout"], result["cert_mode"])
     return 0
-
 
 
 def _dnsapi_dirs(acme_sh):
@@ -3870,9 +3982,11 @@ def quick_issue(args):
         return issue(args)
     find_acme_sh()
     refresh_defaults()
-    eprint(_('Quick certificate: one certificate containing all the names entered below.'))
+    eprint(_('Quick certificate: enter one or more names; with multiple names you can choose one SAN certificate or separate certificates.'))
     eprint(_('A wildcard such as *.example.com does not include example.com. Add both when needed.'))
     spec = prompt_validated_required(_('Domains, separated by spaces'), parse_domains)
+    domains = parse_domains(spec)
+    cert_mode = choose_cert_mode(domains, "merged")
     provider_id = _provider_choice(DEFAULT_DNS)
     provider = find_dns_provider(provider_id)
     configured = _provider_status(provider, _read_conf_text(resolve_account_conf(find_acme_sh())))
@@ -3884,17 +3998,21 @@ def quick_issue(args):
             eprint(_('Supply the provider credentials through acme config or the upstream environment before issuance.'))
     eprint(_('Using saved settings: CA={}, DNS wait={}s, key={}, layout={}, output={}').format(DEFAULT_SERVER, DEFAULT_DELAY, DEFAULT_KEY_LENGTH, DEFAULT_OUTPUT_LAYOUT, DEFAULT_OUTPUT_ROOT))
     eprint(_('For HTTP validation or custom settings, use the detailed issue wizard from Advanced tools.'))
-    domains = parse_domains(spec)
     shortcut_result = {
         "server": DEFAULT_SERVER, "mode": "dns", "dns": provider_id, "delay": DEFAULT_DELAY,
         "keylength": DEFAULT_KEY_LENGTH, "layout": DEFAULT_OUTPUT_LAYOUT, "output_root": DEFAULT_OUTPUT_ROOT,
-        "cert_name": sanitize_cert_name(domains[0]), "reloadcmd": "",
+        "cert_name": sanitize_cert_name(domains[0]) if cert_mode == "merged" or len(domains) == 1 else "",
+        "cert_mode": cert_mode, "reloadcmd": "",
     }
     show_cli_shortcut(_issue_shortcut_args(shortcut_result, domains))
-    if not prompt_yes_no(_('Start issuing this certificate?'), "n"):
+    if cert_mode == "separate" and len(domains) > 1:
+        confirmed = prompt_yes_no(_('Start issuing {} separate certificates?').format(len(domains)), "n")
+    else:
+        confirmed = prompt_yes_no(_('Start issuing this certificate?'), "n")
+    if not confirmed:
         eprint(_('acme: cancelled; no certificate request was sent'))
         return 0
-    return issue(["-dns", provider_id, spec])
+    return issue(["-dns", provider_id, "--cert-mode", cert_mode, spec])
 
 
 def _interactive_rollback():
@@ -3986,8 +4104,8 @@ def interactive_main():
 
 
 SUBCOMMAND_HELP = {
-    "quick": "acme quick [\"DOMAIN ...\"]",
-    "issue": "acme issue [--validation MODE] [-dns PROVIDER] [-out DIR] [-name NAME] [-format LAYOUT] [\"DOMAIN ...\"] [SECONDS] [-- NATIVE_OPTIONS]",
+    "quick": "acme quick [--cert-mode merged|separate] [\"DOMAIN ...\"]",
+    "issue": "acme issue [--cert-mode merged|separate] [--validation MODE] [-dns PROVIDER] [-out DIR] [-name NAME] [-format LAYOUT] [\"DOMAIN ...\"] [SECONDS] [-- NATIVE_OPTIONS]",
     "install": "acme install [--email EMAIL] [--version TAG|--branch BRANCH] [--cron|--no-cron] [--no-profile]",
     "uninstall": "acme uninstall [--yes]",
     "certs": "acme certs [list|read|update|renew|renew-all|install|deploy|revoke|deactivate-auth|delete] [DOMAIN|INDEX] [OPTIONS]",

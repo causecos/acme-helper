@@ -41,7 +41,7 @@ def clean_suite_env(dest, name, source=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    suites = ['ablation','adversarial','flow_matrix','review_v19','review_v110','review_issue_diagnostics']
+    suites = ['ablation','adversarial','flow_matrix','review_v19','review_v110','review_issue_diagnostics','review_cert_modes']
     parser.add_argument('--report-dir', default='test-results')
     parser.add_argument('--suite', choices=suites, help='Run one suite for bounded CI jobs; omit to use --profile')
     parser.add_argument('--profile', choices=['all','diagnostic'], default='all', help='all = release regression; diagnostic = bounded handoff checks without the long canonical flow matrix')
@@ -57,7 +57,7 @@ def main():
     all_names = suites
     profile_names = {
         'all': all_names,
-        'diagnostic': ['ablation','adversarial','review_v19','review_v110','review_issue_diagnostics'],
+        'diagnostic': ['ablation','adversarial','review_v19','review_v110','review_issue_diagnostics','review_cert_modes'],
     }
     names = [args.suite] if args.suite else profile_names[args.profile]
     report = {'python': sys.version, 'profile': args.profile if not args.suite else 'suite:'+args.suite,
@@ -76,6 +76,7 @@ def main():
         'review_v19': 240,
         'review_v110': 240,
         'review_issue_diagnostics': 240,
+        'review_cert_modes': 240,
         'adversarial': 240,
         'ablation': 240,
     }
