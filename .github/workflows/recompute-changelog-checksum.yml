@@ -1,0 +1,44 @@
+name: Recompute changelog checksum
+
+on:
+  push:
+    branches:
+      - fix/bilingual-changelog
+    paths:
+      - .github/workflows/recompute-changelog-checksum.yml
+
+permissions:
+  contents: write
+
+jobs:
+  checksum:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/bilingual-changelog
+      - name: Update CHANGELOG checksum
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          path = Path('CHANGELOG.md')
+          digest = hashlib.sha256(path.read_bytes()).hexdigest()
+          manifest = Path('SHA256SUMS')
+          lines = manifest.read_text().splitlines()
+          target = '  ./CHANGELOG.md'
+          matches = [i for i, line in enumerate(lines) if line.endswith(target)]
+          if len(matches) != 1:
+              raise SystemExit('CHANGELOG checksum entry not unique')
+          lines[matches[0]] = digest + target
+          manifest.write_text('\n'.join(lines) + '\n')
+          print('CHANGELOG_SHA256=' + digest)
+          PY
+          sha256sum -c SHA256SUMS
+      - name: Commit checksum
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add SHA256SUMS
+          git diff --cached --quiet || git commit -m "chore: sync bilingual changelog checksum"
+          git push origin HEAD:fix/bilingual-changelog
