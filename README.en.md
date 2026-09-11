@@ -1,114 +1,131 @@
-# ACME Helper v1.10.1
+# ACME Helper
 
-[繁體中文](README.md) · [ChatGPT repair handoff](CHATGPT_REPAIR_HANDOFF.md) · [Translation maintenance](TRANSLATING.md)
+[中文](README.md) · [Full usage](docs/USAGE.en.md) · [Versioning](docs/VERSIONING.md) · [Changelog](CHANGELOG.md) · [Feature coverage](FEATURE_COVERAGE.md) · [Audit baseline](AUDIT.md)
 
-> **Project relationship and licensing:** ACME Helper is an independent, unofficial third-party project. It is not affiliated with, endorsed by, or maintained by [acme.sh](https://github.com/acmesh-official/acme.sh) or acmesh-official. This repository does not vendor or redistribute acme.sh source code; it operates an installed upstream acme.sh through external CLI/execution interfaces, or installs it only when explicitly requested by the user. ACME Helper itself is released under the [MIT License](LICENSE); acme.sh is a separate upstream project distributed under its own GPLv3 terms.
+**A human-friendly CLI for operating acme.sh without memorizing a large parameter surface.** ACME Helper provides certificate issuance, DNS API setup, SAN/renew/deploy workflows, version management, and redacted diagnostic handoffs while preserving access to upstream acme.sh capabilities.
 
-ACME Helper makes acme.sh approachable for beginners and fast for operators. It provides task-oriented menus while retaining concise commands and native passthrough. It does not implement ACME or maintain a second certificate database.
+> ACME Helper is an independent, unofficial third-party project. It is not affiliated with or maintained by acme.sh / acmesh-official. It does not reimplement ACME or embed the acme.sh source tree; upstream acme.sh remains authoritative for ACME, DNS validation, renewal state, and managed certificates. ACME Helper is MIT-licensed; acme.sh is distributed under its own license.
 
-### v1.10.1 maintenance fix
+## Who it is for
 
-Failed version switches now restore both presence and absence of `acme.sh/dnsapi/deploy/notify` according to the new backup `assets=` manifest, so a hook directory created only by the target version cannot survive rollback. Legacy backups without `assets=` are restored conservatively without guessing prior absence. Version-drift tests also no longer treat a mock that only changed its version text as evidence of real legacy compatibility; a reduced 3.1.3-like surface missing required commands is explicitly `incompatible`.
+- Operators who need TLS automation without memorizing provider and issuance flags.
+- Sysadmins who want predictable CLI workflows, hooks, version switching, rollback, and diagnostics.
+- Users who want guided operations to produce reusable shell-safe commands.
+
+## Highlights
+
+- **One issuance workflow**: the menu and `acme issue` use the same wizard. Legacy `acme quick` remains only as a compatibility alias.
+- **Multiple-domain modes**: `merged` creates one SAN certificate; `separate` creates one certificate per entered name.
+- **Dynamic DNS provider discovery** from the installed acme.sh `dnsapi` tree.
+- **Certificate lifecycle** operations for SAN inspection, renewal, install, deploy, revoke, authorization deactivation, and removal.
+- **Version and compatibility management** for install, update, tag/branch switching, rollback, and interface probing.
+- **Redacted diagnostics** with `acme diagnose` for handoff to ChatGPT or another reviewer.
+- **Traditional Chinese and English UI** without rewriting upstream command output.
 
 ## Install
 
+After downloading a release archive:
+
 ```bash
-tar -xzf acme-helper-v1.10.1.tar.gz
-cd acme-helper-v1.10.1
 sha256sum -c SHA256SUMS
 sudo ./install.sh
 ```
 
-Unprivileged installation:
+Non-root install:
 
 ```bash
 PREFIX="$HOME/.local" ./install.sh
-"$HOME/.local/bin/acme" --lang en
 ```
 
-Change the output root with `acme config defaults` when `/etc/ssl/acme` is not writable. The installer copies the launcher, Python core and language catalogs. It does not delete credentials, certificates or an existing scheduler.
+Python 3.6+ is required. Linux is the tested platform. Installing ACME Helper does not implicitly install or modify acme.sh.
 
-## Start without memorizing flags
+## First use
 
 ```bash
-acme --lang en
-acme language en
+acme
 ```
 
-The menu groups quick DNS issuance, existing certificates, DNS credentials, scheduling/notifications, installation/versions, advanced tools and preferences. Enter a number or an existing command name. `:back` leaves normal input forms; Ctrl-C cancels. Secret input treats `:back` as data. Operations return to the main menu.
+The first menu item is certificate issuance. DNS, webroot, standalone, ALPN, Apache/Nginx, manual DNS, and DNS persist all enter through the same issuance wizard.
 
-The quick wizard asks for domains. When more than one name is entered it offers `merged` (one SAN certificate) or `separate` (one independent certificate per entered name), then lets you search providers with `/term` and offers credential setup when local values are missing. Installation is a separate explicit operation. Email is optional; new cron installation is off.
-
-### Copy the resulting CLI for next time
-
-After a guided flow resolves its final settings and before it executes or asks for the final confirmation, Helper prints an equivalent `acme ...` command. Copy that line next time to skip the wizard. Read-only guided tasks such as version, defaults, status, provider browsing and hook browsing also expose their direct command. Expert/direct CLI calls remain quiet.
-
-The preview uses shell-safe quoting. Tokens, passwords, EAB HMAC values, DNS credentials and deploy/notify hook environment values are never expanded into the shortcut. Replay-safe secret paths use `--password-stdin` or `--eab-hmac-stdin`; generic native secrets are shown only as `[hidden]`. The central preview layer also fail-safe redacts known `--password` and `--eab-hmac-key` values. Destructive shortcuts intentionally omit `--yes`, so copied revoke/delete/deactivate/uninstall commands still confirm. Version switch/rollback previews explicitly warn when the copied non-interactive form executes immediately.
-
-## Repair handoff to ChatGPT without Codex on the server
-
-No Codex installation is required on the target host. Run:
+Direct CLI examples:
 
 ```bash
-acme diagnose
-```
-
-In a TTY, Helper asks whether to include managed domain names, an explicitly saved error log, and bundled offline regression tests. The safe defaults omit domains/logs/tests. Non-interactive use creates the same conservative snapshot directly.
-
-To include saved terminal/acme.sh output after redaction:
-
-```bash
-acme diagnose --log /tmp/acme-error.log
-```
-
-Other useful forms:
-
-```bash
-acme diagnose --stdout
-acme diagnose --include-domains
-acme diagnose --run-tests
-```
-
-The handoff includes Helper version/core SHA-256, OS/Python, acme.sh compatibility, non-secret defaults, config-file metadata, provider state, certificate count, cron state, and only logs explicitly supplied with `--log`. Logs are never read automatically and domain names are omitted by default. `--run-tests` uses a bounded diagnostic profile and explicitly reports `flow_matrix` as omitted; full release verification remains `python3 -S tests/run_all.py`. Offline suites run with isolated HOME/TMPDIR and do not inherit production ACME/provider credentials, account paths, BASH_ENV or PYTHONPATH. Installed runtimes without `tests/` report `NOT_RUN` rather than pretending regression tests passed.
-
-Token/Key/password/EAB HMAC, authorization/cookie headers, URL passwords, common provider IDs and private-key blocks are redacted. The file is created mode 0600, existing output files are never overwritten, and symlink logs are rejected. Automatic redaction is not a disclosure guarantee: review the prompt before sharing it. Paste the prompt into ChatGPT; if a source patch is needed, also attach the exact matching ACME Helper archive/version.
-
-See `CHATGPT_REPAIR_HANDOFF.md`.
-
-## Short commands
-
-```bash
-acme install
-acme config dns_cf
-acme -dns dns_cf "example.com *.example.com"
-acme issue --cert-mode merged "example.com *.example.com"
-acme issue --cert-mode separate "example.com *.example.com api.example.com"
+acme issue "example.com *.example.com"
+acme issue --cert-mode separate --cert-name production "example.com *.example.com api.example.com"
 acme certs
-acme certs update "example.com"
-acme cron on
-acme help certs
-acme native
-acme diagnose
+acme config dns_namesilo
+acme cron status
+acme version --full
 ```
 
-Defaults remain Let's Encrypt, dns_namesilo, 120-second DNS wait, ec-256 and minimal PEM output. Multiple names default to `merged`, where all names share one SAN certificate. `--cert-mode separate` issues one certificate per entered name. Wildcard/base pairs receive distinct deterministic output directories (`*.example.com` becomes `wildcard-example.com`); remaining collisions receive `-2`, `-3`, and so on. A shared `--cert-name` is rejected for a multi-certificate separate batch. The batch stops on the first issuance error and does not roll back certificates that already succeeded. A wildcard does not include its base name. `domains.txt` is retained as a requested-SAN manifest, not an authoritative certificate database. Known managed-certificate output collisions are refused.
+Existing scripts using `acme quick ...` continue to work because `quick` maps to `issue`, but it is no longer documented as a separate feature.
 
-`update` upgrades upstream acme.sh, not Helper. The pinned target remains 3.1.4; this is not a claim about the latest release. Install another Helper release using its installer.
+## Multiple domains
 
-## Language contract
-
-Priority: leading `--lang` > `ACME_HELPER_LANG` (or `ACME_LANG`) > saved `[ui] language` > `zh-TW`. Supported catalogs: Traditional Chinese (Taiwan) and English. Unknown languages are rejected. Missing/invalid JSON catalogs fall back to English source messages.
-
-Helper-owned menus, prompts, guidance and errors are localized. Identifiers, flags, tokens, file paths and machine-readable keys are not translated. Upstream output, hook metadata and installer bootstrap diagnostics may remain English. Native arguments are forwarded unchanged.
-
-## Support boundaries
-
-Runtime tested on Linux, Bash 5.2.37 and Python 3.13.5. Python 3.6+ remains a source/API compatibility target, not a separately executed runtime certification. Test harness: Python 3.7+. DNS/deploy/notify inventories are dynamic; missing provider metadata is explicitly reported as manual-schema. Local configured status is not a live API authentication test.
-
-Custom account configuration uses `ACME_ACCOUNT_CONF`/upstream `ACCOUNT_CONF_PATH`; explicit `LE_WORKING_DIR` and `LE_CONFIG_HOME` are preserved. Independent cron/service jobs must use matching environment/configuration. New-format version backups restore both present and absent program assets; legacy backups without `assets=` restore only stored assets. Version rollback is still not a crash-atomic multi-directory transaction.
+`merged` is the default and sends all names in one upstream `--issue` request.
 
 ```bash
-python3 -S tests/run_all.py --report-dir /tmp/acme-helper-tests
+acme issue --cert-mode merged "example.com *.example.com api.example.com"
 ```
 
-The suite uses local fixtures and real PTYs. `tests/review_v110.py` specifically exercises the diagnostic handoff, redaction, read-only boundary and bilingual UX. It is not live DNS/CA/deployment certification and does not establish 100% source branch coverage.
+`separate` sends one upstream `--issue` per name:
+
+```bash
+acme issue --cert-mode separate --cert-name production "example.com *.example.com api.example.com"
+```
+
+External outputs are grouped as `<output>/<cert-name>/<domain>/`:
+
+```text
+/etc/ssl/acme/
+└── production/
+    ├── example.com/
+    ├── wildcard-example.com/
+    └── api.example.com/
+```
+
+Wildcard directory names use a `wildcard-` prefix; remaining collisions receive `-2`, `-3`, and so on. If `--cert-name` is omitted, the group defaults to the sanitized first domain. A separate batch stops at the first issuance failure; certificates that already succeeded remain managed and are not falsely rolled back across CA/DNS state.
+
+## Defaults
+
+| Setting | Built-in default |
+|---|---|
+| CA | Let's Encrypt |
+| DNS | `dns_namesilo` |
+| DNS wait | 120 seconds |
+| Key | `ec-256` |
+| Output root | `/etc/ssl/acme` |
+| Output layout | `minimal` |
+| New-install cron | off |
+
+Issuance precedence is CLI → environment → Helper config → built-in defaults.
+
+## Security boundary
+
+ACME Helper touches DNS/API credentials, private-key paths, filesystem writes, subprocesses, cron, deploy/notify hooks, and network actions. Guided previews and diagnostics therefore avoid expanding secrets into shell history. Log text included in `acme diagnose` is treated as **untrusted data, never model instructions**. Automated redaction reduces risk but is not a data-loss guarantee; review diagnostic output before sharing it.
+
+See [AUDIT.md](AUDIT.md) and [FEATURE_COVERAGE.md](FEATURE_COVERAGE.md) for the validation boundary and evidence.
+
+## Documentation
+
+- [docs/USAGE.en.md](docs/USAGE.en.md): complete operating guide.
+- [docs/VERSIONING.md](docs/VERSIONING.md): Helper versions, Git tags/releases, archive names, and upstream acme.sh versions.
+- [CHANGELOG.md](CHANGELOG.md): user-visible changes.
+- [FEATURE_COVERAGE.md](FEATURE_COVERAGE.md): entry points, regression evidence, and limitations.
+- [AUDIT.md](AUDIT.md): security/failure-atomicity/compatibility audit baseline.
+- [CHATGPT_REPAIR_HANDOFF.md](CHATGPT_REPAIR_HANDOFF.md): field diagnostic handoff format.
+- [CODEX_LIVE_TEST_PROMPT.md](CODEX_LIVE_TEST_PROMPT.md): external DNS/CA validation prompt.
+- [TRANSLATING.md](TRANSLATING.md): translation rules.
+
+## Versioning
+
+```bash
+acme --version
+acme version --full
+```
+
+ACME Helper follows Semantic Versioning. The runtime `VERSION` constant is the Helper version source; Git tags and GitHub Releases use `vX.Y.Z`. Upstream acme.sh versions are reported separately with `acme_sh_*` fields. See [docs/VERSIONING.md](docs/VERSIONING.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

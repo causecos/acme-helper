@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 ACME = str(ROOT / 'acme')
 CORE = str(ROOT / 'acme_cli.py')
 MOCK = str(ROOT / 'tests' / 'mock-acme.sh')
-VERSION = '1.10.1'
+VERSION = '1.11.0'
 MAIN_PROMPT = 'Action (number or command)'
 
 
