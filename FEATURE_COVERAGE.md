@@ -11,10 +11,10 @@
 | 範圍 | 入口與 UX | 本輪證據／限制 |
 |---|---|---|
 | 上游安裝、更新、切版、回滾、移除 | 安裝與版本分類；原短指令保留 | CLI/PTY fixture 回歸；新格式回滾會依 manifest 還原程式資產的存在／不存在狀態；真實下載安裝未執行 |
-| 快速 DNS 簽發 | 一個任務精靈、預設值、搜尋編號、缺少設定時引導輸入 | 中英雙語 PTY、取消、成功、argv 一致測試 |
+| 快速 DNS 簽發 | 一個任務精靈、預設值、搜尋編號、缺少設定時引導輸入；多網域可選 merged SAN 或 separate 獨立憑證 | 中英雙語 PTY、取消、成功、argv 一致測試；獨立模式逐域名 request、碰撞與部分失敗回歸 |
 | 全驗證模式 | 進階 issue：DNS、webroot、standalone、ALPN、stateless、Apache、Nginx、手動 DNS、DNS persist | 各入口參數回歸；外部驗證未執行 |
 | DNS provider | 實際安裝樹動態清單、metadata 認證精靈 | 不維護第二份 vendor schema；manual-schema/runtime-only 明示 |
-| 憑證/SAN | 列全部網域、讀取、續期、安裝、部署、撤銷、停用授權、移除管理 | RSA/ECC 選取身分不再二次查找；跨憑證輸出路徑防衝突 |
+| 憑證/SAN | 列全部網域、讀取、續期、安裝、部署、撤銷、停用授權、移除管理；簽發可選單張多 SAN 或逐名稱獨立憑證 | RSA/ECC 選取身分不再二次查找；跨憑證輸出路徑防衝突；wildcard/base 獨立輸出不撞名 |
 | cron | 查看、啟用、停用、執行一次 | 依目前程式絕對路徑辨認；新安裝預設 off |
 | deploy / notify | 動態 hook、環境欄位、確認 | 只有可觀察欄位，不假裝有完整 required/optional schema |
 | 帳號 / CA / CSR / key / export | 進階工具與既有命令 | 已儲存 CA 預設套用一致；保留敏感資料遮蔽 |
@@ -22,7 +22,7 @@
 | 互動快捷 CLI | 所有 guided 執行在正式動作前顯示可複製的 `acme ...`；唯讀 guided 任務同樣提供快捷入口 | shell-safe quoting；Secret/HMAC/PFX/hook env 不展開；破壞性命令不自動加入 `--yes` |
 | ChatGPT 修復交接 | `acme diagnose`／進階選單；可選 `--log`、`--include-domains`、`--run-tests` | 唯讀狀態收集；log 明確 opt-in；0600；集中遮蔽；log 視為不可信證據防 prompt injection；bounded 測試使用獨立 HOME/TMPDIR 且不繼承正式 credential；安裝版沒 tests 時標 NOT_RUN |
 | 語言 | zh-TW/en、設定持久化、全域前綴參數 | 715 對訊息模板；key/格式欄位一致、真實 PTY 與相同 argv |
-| 安裝資源 | 自訂 PREFIX、核心與兩份語系檔一起安裝 | 完整安裝流程測試，非僅工作目錄直接執行 |
+| 安裝資源 | 自訂 PREFIX、launcher、核心、runtime 與兩份語系檔一起安裝 | 完整安裝流程測試，非僅工作目錄直接執行 |
 
 ## UX 採用原則
 

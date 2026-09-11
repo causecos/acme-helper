@@ -1196,6 +1196,7 @@ if [ -n "${MOCK_BRANCH_LOG:-}" ]; then printf '%s\n' "${BRANCH:-}" > "$MOCK_BRAN
         def drive_issue(s, layout, cert_name, advanced='n', confirm='y', bad_inputs=False):
             s.expect(MAIN_PROMPT).line('issue')
             s.expect('Domains:').line('*.pty1.test *.pty2.test')
+            s.expect('Certificate mode').expect('Choose a number or command').line('merged')
             s.expect('ACME Server').line('')
             s.expect('Validation mode').line('')
             s.expect('DNS API').line('')
@@ -1268,7 +1269,7 @@ if [ -n "${MOCK_BRANCH_LOG:-}" ]; then printf '%s\n' "${BRANCH:-}" > "$MOCK_BRAN
 
         # Non-TTY full guided mode, final confirmation intentionally skipped because not a TTY.
         e = dict(env, ACME_OUTPUT_ROOT=td + '/pipe-guided', MOCK_LOG=td + '/pipe-guided.argv')
-        data = 'issue\n*.pipe1.test *.pipe2.test\n\n\n\n\n\nminimal\n\npipe-cert\n\nn\n'
+        data = 'issue\n*.pipe1.test *.pipe2.test\nmerged\n\n\n\n\n\nminimal\n\npipe-cert\n\nn\n'
         p = run_cli([], e, data)
         t.ok('non-tty-guided', p.returncode == 0 and '*.pipe2.test' in argvlog(e['MOCK_LOG']) and (pathlib.Path(e['ACME_OUTPUT_ROOT']) / 'pipe-cert' / 'domains.txt').exists(), 'no-args pipe guided issue')
 

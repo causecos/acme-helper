@@ -32,7 +32,7 @@ PREFIX="$HOME/.local" ./install.sh
 
 `~/.local/bin` 未在 PATH 時使用完整路徑；非 root 使用者請透過 `acme config defaults` 把輸出根目錄改為可寫位置。從舊版升級時執行同一個 installer，不清除憑證、Token、已存預設或 cron。
 
-安裝內容是 `<PREFIX>/bin/acme`、`<PREFIX>/lib/acme/acme_cli.py` 與 `<PREFIX>/lib/acme/locales/*.json`。請勿只複製 launcher；缺少語系檔會退回英文，缺少核心則無法執行。
+安裝內容是 `<PREFIX>/bin/acme`、`<PREFIX>/lib/acme/acme_cli.py`、`<PREFIX>/lib/acme/acme_runtime.py` 與 `<PREFIX>/lib/acme/locales/*.json`。請勿只複製 launcher；缺少語系檔會退回英文，缺少核心則無法執行；缺少 runtime 時 `issue/quick` 仍可相容執行，但不具自動失敗診斷。
 
 ## 初次使用
 
@@ -55,7 +55,7 @@ acme
 
 尚未安裝 acme.sh 時，先選 5 → 安裝。email 可略過，cron 預設關閉。安裝版本固定使用本套件目標 `3.1.4`，**不是宣稱它永遠是最新版本**；可指定其他 tag 或 branch。
 
-之後選 1，輸入網域、選擇實際代管 DNS 的服務商。缺少認證資料時，可直接進入安全輸入流程。搜尋用 `/cloud` 之類的關鍵字，列出結果後輸入編號，不必背 `dns_cf`。
+之後選 1，輸入網域；輸入多個網域時可選 `merged`（全部 SAN 合併為一張憑證）或 `separate`（每個輸入名稱各自一張憑證），再選擇實際代管 DNS 的服務商。缺少認證資料時，可直接進入安全輸入流程。搜尋用 `/cloud` 之類的關鍵字，列出結果後輸入編號，不必背 `dns_cf`。
 
 一般欄位輸入 `:back` 可返回主選單；Token／密碼欄位不把 `:back` 當命令。Ctrl-C 取消、Ctrl-D 結束輸入。操作完成或可恢復的錯誤會回主選單，不自動重試破壞性操作。原本的 `issue`、`certs` 等指令名稱仍可直接輸入。
 
@@ -139,6 +139,8 @@ acme "example.com *.example.com"
 acme "*.aa.bb *.dd.bb *.gg.bb" 100
 acme -dns dns_cf -name web-prod "example.com *.example.com"
 acme -out /srv/ssl -format nginx "example.com *.example.com"
+acme issue --cert-mode merged "example.com *.example.com"
+acme issue --cert-mode separate "example.com *.example.com api.example.com"
 acme config defaults
 acme defaults
 ```
@@ -155,7 +157,7 @@ acme defaults
 
 簽發參數優先序：CLI → 對應環境變數 → `[defaults]` → 內建值。`acme config defaults` 不會把暫時環境變數誤存成永久值。
 
-`*.example.com` 不涵蓋 `example.com` 或多一層的 `www.api.example.com`。一個命令裡的所有網域共用一張憑證與私鑰。
+`*.example.com` 不涵蓋 `example.com` 或多一層的 `www.api.example.com`。多網域預設維持 `merged`，所有名稱共用一張 SAN 憑證與私鑰；指定 `--cert-mode separate` 時，每個輸入名稱會各自建立一張憑證與私鑰。獨立模式會自動為每張憑證建立輸出目錄；`*.example.com` 使用 `wildcard-example.com` 避免與 `example.com` 撞名，若仍有名稱碰撞會加上 `-2`、`-3`。多張獨立憑證不能共用 `--cert-name`。批次遇到第一個簽發錯誤就停止後續請求；先前已成功的憑證會保留，不做可能造成更多外部副作用的自動回滾。
 
 預設輸出：
 
