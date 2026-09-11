@@ -94,7 +94,7 @@ jobs:
       - name: Commit only after all gates pass
         if: success()
         run: |
-          git rm tools/apply-cert-mode-fix.py .github/workflows/apply-cert-mode-fix.yml
+          git rm -f tools/apply-cert-mode-fix.py .github/workflows/apply-cert-mode-fix.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add acme_cli.py locales/en.json locales/zh-TW.json tests/review_v19.py tests/flow_matrix.py tests/review_cert_modes.py tests/run_all.py README.md README.en.md FEATURE_COVERAGE.md .github/workflows/offline-regression.yml SHA256SUMS
