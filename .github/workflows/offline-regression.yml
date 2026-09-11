@@ -18,8 +18,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Verify repository checksums
-        run: |
-          sha256sum README.en.md README.md
-          sha256sum -c SHA256SUMS
+        run: sha256sum -c SHA256SUMS
       - name: Run full offline regression
         run: python3 -S tests/run_all.py --report-dir test-results
