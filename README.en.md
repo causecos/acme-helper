@@ -2,6 +2,8 @@
 
 [繁體中文](README.md) · [ChatGPT repair handoff](CHATGPT_REPAIR_HANDOFF.md) · [Translation maintenance](TRANSLATING.md)
 
+> **Project relationship and licensing:** ACME Helper is an independent, unofficial third-party project. It is not affiliated with, endorsed by, or maintained by [acme.sh](https://github.com/acmesh-official/acme.sh) or acmesh-official. This repository does not vendor or redistribute acme.sh source code; it operates an installed upstream acme.sh through external CLI/execution interfaces, or installs it only when explicitly requested by the user. ACME Helper itself is released under the [MIT License](LICENSE); acme.sh is a separate upstream project distributed under its own GPLv3 terms.
+
 ACME Helper makes acme.sh approachable for beginners and fast for operators. It provides task-oriented menus while retaining concise commands and native passthrough. It does not implement ACME or maintain a second certificate database.
 
 ### v1.10.1 maintenance fix
