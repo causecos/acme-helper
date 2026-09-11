@@ -28,7 +28,7 @@ import subprocess
 import tempfile
 import time
 
-VERSION = "1.11.0"
+VERSION = "1.11.1"
 STABLE_ACME_SH_VERSION = "3.1.4"
 INTERFACE_REFERENCE_VERSION = "3.1.5"
 MIN_PYTHON = (3, 6)

@@ -2,7 +2,7 @@
 
 All notable user-visible changes to ACME Helper are recorded here. The project follows Semantic Versioning.
 
-## Unreleased
+## [1.11.1] - 2026-09-12
 
 ### Fixed
 
