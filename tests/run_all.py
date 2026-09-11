@@ -41,8 +41,9 @@ def clean_suite_env(dest, name, source=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    suites = ['ablation','adversarial','flow_matrix','review_v19','review_v110','review_issue_diagnostics']
     parser.add_argument('--report-dir', default='test-results')
-    parser.add_argument('--suite', choices=['ablation','adversarial','flow_matrix','review_v19','review_v110'], help='Run one suite for bounded CI jobs; omit to use --profile')
+    parser.add_argument('--suite', choices=suites, help='Run one suite for bounded CI jobs; omit to use --profile')
     parser.add_argument('--profile', choices=['all','diagnostic'], default='all', help='all = release regression; diagnostic = bounded handoff checks without the long canonical flow matrix')
     args = parser.parse_args()
     if args.suite and args.profile != 'all':
@@ -51,18 +52,18 @@ def main():
     if sys.version_info < (3, 7):
         print('The test harness requires Python 3.7+; runtime syntax targets 3.6+.', file=sys.stderr)
         return 2
-    for path in [ROOT/'acme_cli.py'] + sorted((ROOT/'tests').glob('*.py')):
+    for path in [ROOT/'acme_cli.py', ROOT/'acme_runtime.py'] + sorted((ROOT/'tests').glob('*.py')):
         compile(path.read_text(), str(path), 'exec')
-    all_names = ['ablation','adversarial','flow_matrix','review_v19','review_v110']
+    all_names = suites
     profile_names = {
         'all': all_names,
-        'diagnostic': ['ablation','adversarial','review_v19','review_v110'],
+        'diagnostic': ['ablation','adversarial','review_v19','review_v110','review_issue_diagnostics'],
     }
     names = [args.suite] if args.suite else profile_names[args.profile]
     report = {'python': sys.version, 'profile': args.profile if not args.suite else 'suite:'+args.suite,
               'omitted_suites': [name for name in all_names if name not in names],
               'runtime_sha256': {}, 'suites': []}
-    for relative in ['acme', 'acme_cli.py', 'install.sh', 'locales/en.json', 'locales/zh-TW.json']:
+    for relative in ['acme', 'acme_cli.py', 'acme_runtime.py', 'install.sh', 'locales/en.json', 'locales/zh-TW.json']:
         report['runtime_sha256'][relative] = hashlib.sha256((ROOT/relative).read_bytes()).hexdigest()
     static_env = clean_suite_env(dest, 'static')
     syntax = subprocess.run(['bash','-n',str(ROOT/'acme')], check=False, env=static_env)
@@ -70,7 +71,14 @@ def main():
     if syntax.returncode or installer.returncode:
         print('FAIL: Bash syntax', file=sys.stderr); return 1
     failed = False
-    suite_timeouts = {'flow_matrix': 600, 'review_v19': 240, 'review_v110': 240, 'adversarial': 240, 'ablation': 240}
+    suite_timeouts = {
+        'flow_matrix': 600,
+        'review_v19': 240,
+        'review_v110': 240,
+        'review_issue_diagnostics': 240,
+        'adversarial': 240,
+        'ablation': 240,
+    }
     for name in names:
         start = time.monotonic(); env = clean_suite_env(dest, name)
         env['ACME_TEST_REPORT'] = str(dest/('{}-cases.json'.format(name)))
