@@ -51,7 +51,15 @@ jobs:
           sudo install -d -m 755 /usr/local/lib/acme
           sudo chown "$(id -u):$(id -g)" /usr/local/lib/acme
           python3 -S tests/run_all.py --report-dir test-results
+      - name: Print regression logs on failure
+        if: failure() && hashFiles('test-results/*.log') != ''
+        run: |
+          for file in test-results/*.log; do
+            echo "===== $file ====="
+            cat "$file"
+          done
       - name: Commit only after all gates pass
+        if: success()
         run: |
           git rm tools/apply-cert-mode-fix.py .github/workflows/apply-cert-mode-fix.yml
           git config user.name github-actions[bot]
