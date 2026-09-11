@@ -34,6 +34,10 @@ def _wrapper_config_path():
 def _language(argv):
     if len(argv) >= 2 and argv[0] == "--lang" and argv[1] in ("zh-TW", "en"):
         return argv[1]
+    if argv and argv[0].startswith("--lang="):
+        value = argv[0].split("=", 1)[1]
+        if value in ("zh-TW", "en"):
+            return value
     env_lang = os.environ.get("ACME_HELPER_LANG") or os.environ.get("ACME_LANG")
     if env_lang in ("zh-TW", "en"):
         return env_lang
@@ -74,6 +78,8 @@ def _issue_intent(argv):
     args = list(argv)
     if len(args) >= 2 and args[0] == "--lang":
         args = args[2:]
+    elif args and args[0].startswith("--lang="):
+        args = args[1:]
     return bool(args and args[0] in ("issue", "quick"))
 
 
@@ -176,7 +182,7 @@ def _persist_raw_fallback(evidence_path):
         return evidence_path
     try:
         directory = _diagnostic_dir()
-        final_raw = os.path.join(directory, RAW_FALLACK_NAME)
+        final_raw = os.path.join(directory, RAW_FALLBACK_NAME)
         if os.path.lexists(final_raw):
             st = os.lstat(final_raw)
             if not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid():
