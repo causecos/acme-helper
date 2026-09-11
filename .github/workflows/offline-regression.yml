@@ -21,3 +21,10 @@ jobs:
         run: sha256sum -c SHA256SUMS
       - name: Run full offline regression
         run: python3 -S tests/run_all.py --report-dir test-results
+      - name: Print regression logs on failure
+        if: failure()
+        run: |
+          for file in test-results/*.log; do
+            echo "===== $file ====="
+            cat "$file"
+          done
