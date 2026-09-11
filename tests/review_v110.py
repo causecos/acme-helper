@@ -92,7 +92,7 @@ def main():
     en=json.loads((ROOT/'locales/en.json').read_text()); zh=json.loads((ROOT/'locales/zh-TW.json').read_text())
 
     # Static/i18n contract.
-    t.check('drift-i18n','version-is-v1.10.1',core.VERSION=='1.10.1',core.VERSION)
+    t.check('drift-i18n','version-is-v1.11.0',core.VERSION=='1.11.0',core.VERSION)
     t.check('drift-i18n','catalog-parity',en.keys()==zh.keys(),(len(en),len(zh)))
     tree=ast.parse(source)
     literal_messages={n.args[0].value for n in ast.walk(tree)
@@ -154,7 +154,7 @@ def main():
         t.check('correctness','diagnose-stdout-success',p.returncode==0 and text.startswith('ACME_HELPER_DIAGNOSTIC_PROMPT_BEGIN') and text.rstrip().endswith('ACME_HELPER_DIAGNOSTIC_PROMPT_END'),controlled(p))
         for section in ('[LAST_OPERATION]','[HELPER_RUNTIME]','[HELPER_SELF_CHECK]','[ACME_SH]','[HELPER_DEFAULTS_AND_FILES]','[DNS_PROVIDER_STATUS]','[CERTIFICATE_INVENTORY]','[CRON]','[REDACTED_LOG_TAILS]','[OFFLINE_TESTS]','[REQUESTED_RESPONSE]','[USER_NOTES]'):
             t.check('correctness','section-'+section.strip('[]'),section in text)
-        t.check('correctness','version-and-core-hash-present','helper_version=1.10.1' in text and 'core_sha256='+hashlib.sha256((ROOT/'acme_cli.py').read_bytes()).hexdigest() in text)
+        t.check('correctness','version-and-core-hash-present','helper_version=1.11.0' in text and 'core_sha256='+hashlib.sha256((ROOT/'acme_cli.py').read_bytes()).hexdigest() in text)
         t.check('correctness','launcher-path-and-hash-present','launcher_path=' in text and 'launcher_sha256='+hashlib.sha256((ROOT/'acme').read_bytes()).hexdigest() in text)
         t.check('security','default-domain-names-omitted','secret-host.example.test' not in text and 'domain_names_included=no' in text,text)
         t.check('security','default-auto-log-not-read','AUTO-LOG-PRIVATE-DATA' not in text and 'AUTO-LOG-TOKEN' not in text and 'no readable log supplied/found' in text)

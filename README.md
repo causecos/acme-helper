@@ -1,24 +1,32 @@
-# ACME Helper v1.10.1
+# ACME Helper
 
-[English](README.en.md) · [功能與限制](FEATURE_COVERAGE.md) · [檢核報告](AUDIT.md) · [ChatGPT 修復交接](CHATGPT_REPAIR_HANDOFF.md) · [進階實機驗收](CODEX_LIVE_TEST_PROMPT.md)
+[English](README.en.md) · [完整使用說明](docs/USAGE.md) · [版本規則](docs/VERSIONING.md) · [Changelog](CHANGELOG.md) · [功能覆蓋](FEATURE_COVERAGE.md) · [稽核基線](AUDIT.md)
 
-Repository：`acme-helper`。指令：`acme`。
+**讓 acme.sh 不必靠記憶大量參數才能安全維運。** ACME Helper 是一個偏向人類操作的 CLI 前端：提供憑證簽發、DNS API 設定、SAN/續期/部署、版本管理與可遮蔽敏感資訊的診斷交接，同時保留 acme.sh 原生能力。
 
-> **專案關係與授權**：ACME Helper 是獨立、非官方的第三方專案，不隸屬於、也未獲 [acme.sh](https://github.com/acmesh-official/acme.sh)／acmesh-official 官方背書或維護。本倉庫不內嵌或重新發布 acme.sh 原始碼，而是透過外部 CLI／執行介面操作已安裝或由使用者明確要求安裝的上游 acme.sh。ACME Helper 自身採 [MIT License](LICENSE)；acme.sh 是獨立上游專案，依其自身 GPLv3 授權條款發布。
+> ACME Helper 是獨立、非官方的第三方專案，不隸屬於 acme.sh / acmesh-official。本倉庫不重新實作 ACME 協定，也不內嵌 acme.sh 原始碼；真正的 ACME、DNS 驗證與憑證狀態仍由上游 acme.sh 負責。ACME Helper 採 MIT License；acme.sh 依其自身授權發布。
 
-**宗旨：讓初學者不用記一堆參數就能使用 acme.sh，也讓專業人員能快速、可預測地維運。**
+## 適合誰
 
-Helper 是 acme.sh 的引導前端，不重新實作 ACME、DNS 驗證或憑證資料庫。一般工作從任務選單完成；既有短指令和原生參數入口保留。
+- 第一次維護 TLS 憑證，不想背 DNS provider、SAN、輸出與續期參數的人。
+- 需要可預測 CLI、部署/通知 hook、版本切換與診斷資訊的系統管理者。
+- 希望互動操作最後能得到可複製 CLI，而不是只能重新走一次選單的人。
 
-### v1.10.1 修正
+## 核心能力
 
-版本切換失敗時，回滾現在會依新格式備份的 `assets=` 清單，同時還原 `acme.sh/dnsapi/deploy/notify` 的「存在」與「原本不存在」狀態，避免目標版本新加入的 hook 目錄殘留。舊版備份若沒有 `assets=` 欄位，為避免猜錯原狀，仍只恢復備份裡實際存在的程式資產。測試也不再只修改 mock 版本字串就宣稱舊版相容；缺少目前必要命令的 3.1.3-like 介面會明確判定 `incompatible`。
+- **單一簽發入口**：互動選單與 `acme issue` 使用同一套流程；舊的 `acme quick` 僅保留為相容別名，不再是第二套功能。
+- **多網域模式**：`merged` 將所有名稱放在一張 SAN 憑證；`separate` 每個名稱各簽一張。
+- **DNS provider 動態發現**：從已安裝的 acme.sh `dnsapi` 取得 provider，不維護第二份固定清單。
+- **憑證生命週期**：列出 SAN、續期、安裝、部署、撤銷、停用授權與移除管理。
+- **版本與相容性**：安裝、更新、指定 tag/branch、切換、回滾及介面探測。
+- **診斷交接**：`acme diagnose` 產生遮蔽敏感資訊的唯讀診斷資料，可交給 ChatGPT 分析。
+- **雙語介面**：繁體中文與英文；指令、參數、路徑與上游錯誤保持原樣。
 
-## 安裝與升級 Helper
+## 安裝
+
+下載 release 壓縮包後：
 
 ```bash
-tar -xzf acme-helper-v1.10.1.tar.gz
-cd acme-helper-v1.10.1
 sha256sum -c SHA256SUMS
 sudo ./install.sh
 ```
@@ -27,216 +35,112 @@ sudo ./install.sh
 
 ```bash
 PREFIX="$HOME/.local" ./install.sh
-"$HOME/.local/bin/acme"
 ```
 
-`~/.local/bin` 未在 PATH 時使用完整路徑；非 root 使用者請透過 `acme config defaults` 把輸出根目錄改為可寫位置。從舊版升級時執行同一個 installer，不清除憑證、Token、已存預設或 cron。
+需要 Python 3.6+；目前以 Linux 為正式測試平台。Helper 安裝與 acme.sh 安裝是兩件事，不會因安裝 Helper 就自動下載或改動上游。
 
-安裝內容是 `<PREFIX>/bin/acme`、`<PREFIX>/lib/acme/acme_cli.py`、`<PREFIX>/lib/acme/acme_runtime.py` 與 `<PREFIX>/lib/acme/locales/*.json`。請勿只複製 launcher；缺少語系檔會退回英文，缺少核心則無法執行；缺少 runtime 時 `issue/quick` 仍可相容執行，但不具自動失敗診斷。
-
-## 初次使用
+## 第一次使用
 
 ```bash
 acme
 ```
 
-主選單：
+主選單第一項就是「簽發憑證」。DNS、webroot、standalone、ALPN、Apache/Nginx、手動 DNS 與 DNS persist 都從同一個簽發精靈進入。
+
+熟悉 CLI 後可直接：
+
+```bash
+acme issue "example.com *.example.com"
+acme issue --cert-mode separate --cert-name production "example.com *.example.com api.example.com"
+acme certs
+acme config dns_namesilo
+acme cron status
+acme version --full
+```
+
+舊版腳本中的 `acme quick ...` 仍會轉到 `acme issue ...`，但新文件與選單不再把它當成獨立功能。
+
+## 多網域憑證
+
+### 合併：`merged`（預設）
+
+```bash
+acme issue --cert-mode merged "example.com *.example.com api.example.com"
+```
+
+一次呼叫上游 `--issue`，所有名稱共用一張憑證與私鑰。
+
+### 分離：`separate`
+
+```bash
+acme issue --cert-mode separate --cert-name production "example.com *.example.com api.example.com"
+```
+
+每個名稱各自呼叫一次上游 `--issue`。外部輸出依群組收納：
 
 ```text
-1. 快速簽發（DNS API）
-2. 憑證：所有 SAN／續期／部署／移除管理
-3. 設定 DNS 認證資料
-4. 排程與通知
-5. 安裝與版本
-6. 進階工具／acme.sh 完整功能
-7. 預設值與語言
-0. 離開
+/etc/ssl/acme/
+└── production/
+    ├── example.com/
+    │   ├── key.pem
+    │   ├── fullchain.pem
+    │   └── domains.txt
+    ├── wildcard-example.com/
+    │   ├── key.pem
+    │   ├── fullchain.pem
+    │   └── domains.txt
+    └── api.example.com/
+        ├── key.pem
+        ├── fullchain.pem
+        └── domains.txt
 ```
 
-尚未安裝 acme.sh 時，先選 5 → 安裝。email 可略過，cron 預設關閉。安裝版本固定使用本套件目標 `3.1.4`，**不是宣稱它永遠是最新版本**；可指定其他 tag 或 branch。
+也就是 `<output>/<cert-name>/<domain>/`。萬用字元目錄使用 `wildcard-` 前綴，避免與 base domain 撞名；其他碰撞會以 `-2`、`-3` 遞增。若未指定 `--cert-name`，群組名稱預設取第一個網域的安全化名稱。
 
-之後選 1，輸入網域；輸入多個網域時可選 `merged`（全部 SAN 合併為一張憑證）或 `separate`（每個輸入名稱各自一張憑證），再選擇實際代管 DNS 的服務商。缺少認證資料時，可直接進入安全輸入流程。搜尋用 `/cloud` 之類的關鍵字，列出結果後輸入編號，不必背 `dns_cf`。
+批次在第一個簽發錯誤時停止。已成功的憑證保留在 acme.sh 管理中，不假裝對 CA/DNS 外部狀態做交易式回滾。
 
-一般欄位輸入 `:back` 可返回主選單；Token／密碼欄位不把 `:back` 當命令。Ctrl-C 取消、Ctrl-D 結束輸入。操作完成或可恢復的錯誤會回主選單，不自動重試破壞性操作。原本的 `issue`、`certs` 等指令名稱仍可直接輸入。
+## 預設值
 
-### 互動完成後直接得到下次的 CLI
-
-互動精靈在所有最終設定都解析完成後、正式執行或確認前，先印出等價的 ACME Helper 指令：
-
-```text
-下次可直接執行：
-  acme issue --server letsencrypt --keylength ec-256 --dns dns_namesilo --dnssleep 120 --output-layout minimal --output-root /etc/ssl/acme --cert-name example.com 'example.com *.example.com'
-確認開始簽發？ [y/N]:
-```
-
-下一次可直接複製該行，不必重新走精靈或記參數。version/defaults/status/providers/hooks 等唯讀任務也會顯示對應快捷指令；本來就以 CLI 呼叫的專業模式維持安靜，不重複輸出自己。
-
-快捷指令採 shell-safe quoting。Token、Password、EAB HMAC、DNS credential 與 deploy/notify hook 環境值**不會展開到畫面或 shell history**；有安全 stdin 路徑時使用 `--password-stdin`／`--eab-hmac-stdin`，無通用安全輸入方式的原生秘密參數只顯示 `[hidden]` 並附警告。中央顯示層還會再次遮蔽已知 `--password`／`--eab-hmac-key`。
-
-撤銷、刪除、停用帳號、卸載等破壞性操作的預覽刻意**不加入 `--yes`**，所以下次複製後仍保留確認。版本 switch/rollback 這類非互動 CLI 會在預覽旁明確提醒重新執行即會直接執行。
-
-## 真機出錯時：直接產生可貼給 ChatGPT 的修復交接
-
-真機不需要安裝 Codex。遇到問題時執行：
-
-```bash
-acme diagnose
-```
-
-在 TTY 會詢問三件事：是否包含管理中網域名稱、是否附上已保存的錯誤 log、是否執行套件內的離線回歸測試。預設全部採較保守選項；非互動環境則直接產生不含網域、不含 log、且不執行測試的診斷提示詞。
-
-若剛才的終端輸出已保存：
-
-```bash
-acme diagnose --log /tmp/acme-error.log
-```
-
-要直接輸出到 stdout：
-
-```bash
-acme diagnose --stdout
-```
-
-完整原始套件上可選擇執行**有界診斷回歸**（消融／對抗／UX/i18n／診斷本身，不含耗時 311 條 canonical flow matrix）：
-
-```bash
-acme diagnose --run-tests
-```
-
-安裝到系統的精簡 runtime 通常沒有 `tests/`，這時會明確標 `NOT_RUN`，不會假裝測過。診斷提示詞也會列出 `offline_omitted_suites=flow_matrix`；完整發行驗收仍使用 `python3 -S tests/run_all.py`。離線測試會使用獨立 HOME/TMPDIR，且不繼承真機的 ACME/provider credential、account path 或 `BASH_ENV/PYTHONPATH`，避免測試碰到正式資料或把秘密寫進測試 log。
-
-診斷交接會收集 Helper 版本與 SHA-256、Python/OS、acme.sh 版本與相容性、非秘密預設值、設定檔 metadata、DNS provider configured/runtime-ready 狀態、憑證數量、cron 狀態，以及使用者**明確指定**的 log tail。預設不列網域名稱，也不會自動讀任何 log；需要網域證據時才使用：
-
-```bash
-acme diagnose --include-domains
-```
-
-Token、Key、Password、EAB HMAC、Authorization/Cookie、URL 密碼、常見 provider ID、private key block 等會先遮蔽。輸出檔權限固定為 `0600`，且拒絕覆寫既有檔案或讀取 symlink log。**自動遮蔽不是資料外洩保證，送出前仍要人工看一次。**
-
-一般 Helper 命令非零退出時也會提示 `acme diagnose`；如果要把當時的完整終端輸出一起交接，先把輸出保存成檔案再用 `--log FILE`。產生後把提示詞檔內容貼回 ChatGPT；若需要修改程式碼，再一併提供相同版本的 ACME Helper 壓縮包。
-
-詳細流程見 [CHATGPT_REPAIR_HANDOFF.md](CHATGPT_REPAIR_HANDOFF.md)。
-
-## 語言
-
-```bash
-acme --lang zh-TW
-acme --lang en
-acme language en
-acme language zh-TW
-```
-
-`--lang` 放在 Helper 指令前，只影響這次執行；`acme language` 儲存偏好。優先序是 `--lang` → `ACME_HELPER_LANG`（兼容 `ACME_LANG`）→ 設定檔 `[ui] language` → `zh-TW`。
-
-翻譯 Helper 自己的選單、提示、說明及錯誤。不翻譯指令名稱、參數、網域、路徑、Token、機器讀取欄位，也不改寫 acme.sh 或外部 hook 的輸出。上游 metadata、未知新功能說明與安裝前置檢查可能仍為英文；這是明確的翻譯範圍。
-
-缺少／無法解析 JSON 語系檔時退回英文。新增翻譯請看 [TRANSLATING.md](TRANSLATING.md)。
-
-## 快速指令與預設
-
-```bash
-acme "example.com *.example.com"
-acme "*.aa.bb *.dd.bb *.gg.bb" 100
-acme -dns dns_cf -name web-prod "example.com *.example.com"
-acme -out /srv/ssl -format nginx "example.com *.example.com"
-acme issue --cert-mode merged "example.com *.example.com"
-acme issue --cert-mode separate "example.com *.example.com api.example.com"
-acme config defaults
-acme defaults
-```
-
-| 設定 | 內建預設 |
+| 項目 | 內建預設 |
 |---|---|
-| CA | letsencrypt |
-| DNS | dns_namesilo |
-| 等待秒數 | 120 |
-| 金鑰 | ec-256 |
-| 輸出根目錄 | /etc/ssl/acme |
-| 格式 | minimal |
+| CA | Let's Encrypt |
+| DNS | `dns_namesilo` |
+| DNS 等待 | 120 秒 |
+| 金鑰 | `ec-256` |
+| 輸出根目錄 | `/etc/ssl/acme` |
+| 輸出格式 | `minimal` |
 | 新安裝 cron | off |
 
-簽發參數優先序：CLI → 對應環境變數 → `[defaults]` → 內建值。`acme config defaults` 不會把暫時環境變數誤存成永久值。
+簽發設定優先序：CLI → 環境變數 → Helper 設定檔 → 內建值。
 
-`*.example.com` 不涵蓋 `example.com` 或多一層的 `www.api.example.com`。多網域預設維持 `merged`，所有名稱共用一張 SAN 憑證與私鑰；指定 `--cert-mode separate` 時，每個輸入名稱會各自建立一張憑證與私鑰。獨立模式會自動為每張憑證建立輸出目錄；`*.example.com` 使用 `wildcard-example.com` 避免與 `example.com` 撞名，若仍有名稱碰撞會加上 `-2`、`-3`。多張獨立憑證不能共用 `--cert-name`。批次遇到第一個簽發錯誤就停止後續請求；先前已成功的憑證會保留，不做可能造成更多外部副作用的自動回滾。
+## 安全邊界
 
-預設輸出：
+ACME Helper 會接觸 DNS/API credential、私鑰路徑、檔案寫入、子程序、cron、deploy/notify hook 與網路動作，因此預覽與診斷刻意避免把秘密展開到 shell history。`acme diagnose` 的 log 內容被視為**不可信資料，不是 AI 指令**；自動遮蔽仍不是資料外洩保證，分享前應人工檢查。
 
-```text
-/etc/ssl/acme/example.com/
-  key.pem
-  fullchain.pem
-  domains.txt
-```
+完整威脅與驗證證據見 [AUDIT.md](AUDIT.md) 與 [FEATURE_COVERAGE.md](FEATURE_COVERAGE.md)。
 
-格式：`minimal` 為 key/fullchain；`full` 再加 cert/ca；`nginx` 為 privkey/fullchain；上述三者保留 `domains.txt`。`none` 不建立外部輸出。PEM 位置由 acme.sh 保存並於續期更新；`domains.txt` 是 Helper 成功 issue/install 後產生的清單，不是憑證資料庫，原生重簽時不會自動同步。
+## 文件
 
-Helper 會拒絕覆寫**已被另一張管理中憑證占用**的 PEM 輸出路徑。RSA、ECC 或不同主網域要共存時，請用不同 `-name`／`-out`；不要期待自動改名。
+- [docs/USAGE.md](docs/USAGE.md)：完整安裝、簽發、憑證、排程、hook、版本與診斷操作。
+- [docs/VERSIONING.md](docs/VERSIONING.md)：Helper 版本、Git tag、release archive 與 acme.sh 上游版本如何區分。
+- [CHANGELOG.md](CHANGELOG.md)：使用者可見變更。
+- [FEATURE_COVERAGE.md](FEATURE_COVERAGE.md)：功能入口、測試證據與限制。
+- [AUDIT.md](AUDIT.md)：已完成的安全／失敗原子性／相容性稽核基線。
+- [CHATGPT_REPAIR_HANDOFF.md](CHATGPT_REPAIR_HANDOFF.md)：真機故障交接格式。
+- [CODEX_LIVE_TEST_PROMPT.md](CODEX_LIVE_TEST_PROMPT.md)：需要外部 DNS/CA 的實機驗收提示詞。
+- [TRANSLATING.md](TRANSLATING.md)：翻譯規則。
 
-## DNS、憑證與日常維運
+## 版本
 
-```bash
-acme providers
-acme providers cloud
-acme config dns_namesilo
-acme config dns_cf
-acme status --all
-acme certs
-acme certs read "*.aa.bb"
-acme certs update "*.aa.bb"
-acme certs delete "*.aa.bb" --yes
-acme cron status
-acme cron on
-acme cron off
-acme cron run
-acme diagnose
-```
-
-憑證清單列出全部 SAN 與金鑰類型。更新沿用 acme.sh 已存的 DNS provider、網域、CA 及輸出位置，不重新猜測；同名 RSA/ECC 憑證請由清單編號選擇。`update` 是續期；增刪 SAN 要用完整最終清單重新 issue。`delete` 僅移除管理，不等於撤銷或清除私鑰。
-
-DNS/deploy/notify 依實際安裝樹動態發現。有 `Options/OptionsAlt` metadata 才能產生可靠的 DNS 認證欄位精靈；缺 metadata 的 provider 會明確標示 `manual-schema`。`configured` 只表示本機存在非空設定，**不是 API 認證成功**。runtime-only 認證資料仍需由實際執行及排程環境提供。
-
-## 安裝、版本與進階功能
+執行：
 
 ```bash
-acme install
-acme install --email admin@example.com --version 3.1.4
-acme install --branch master --no-cron
+acme --version
 acme version --full
-acme versions
-acme update
-acme switch master
-acme rollback
-acme uninstall
-acme certs --help
-acme deploy
-acme notify
-acme account
-acme csr
-acme export
-acme ca
-acme hooks deploy
-acme native
-acme native --help
 ```
 
-`acme update` 更新的是 acme.sh，不是 Helper；無參數時使用套件固定目標。Helper 升級用新版套件的 `install.sh`。`acme uninstall` 委派 upstream，不額外清除憑證、帳號資料或 Helper。
+Helper 採 Semantic Versioning。程式內的 `VERSION` 是執行期版本來源；Git tag / GitHub Release 使用 `vX.Y.Z`。acme.sh 自身版本會以 `acme_sh_*` 欄位獨立顯示，不能把兩者混成同一個版本號。詳細規則見 [docs/VERSIONING.md](docs/VERSIONING.md)。
 
-`version` 為基本介面探測；`version --full` 再執行唯讀 list/info 檢查。`probed-compatible` 不代表 DNS/CA 實機通過。切版備份只含程式資產，不含私鑰／憑證；請另行備份資料。v1.10.1 新格式備份會記錄哪些程式資產原本存在，回滾也會移除切版後才新增的 `dnsapi/deploy/notify` 目錄；舊備份沒有 `assets=` 時則採保守恢復。回滾仍不是跨多個目錄的斷電安全交易，勿與其他升級／續期作業同時執行。
+## License
 
-所有 Helper 子命令都有離線 `--help`；`acme help certs` 也可使用。進階選單保留 webroot/standalone/ALPN/Apache/Nginx/手動 DNS 等模式，以及帳號、CSR、匯出、deploy、notify、CA、原生參數編輯器。不把 private shell 函式當公開功能。
-
-## 自訂執行環境
-
-`ACME_SH_BIN` 指定上游程式。未明確給 `LE_WORKING_DIR` 時，Helper 使用該程式的實際目錄；明確指定的 `LE_WORKING_DIR`／`LE_CONFIG_HOME` 保留。`ACME_ACCOUNT_CONF` 會傳給上游 `ACCOUNT_CONF_PATH`，避免設定與簽發讀不同檔案。
-
-自訂環境變數只保證本次子程序使用；獨立 cron/service 必須提供相同環境，或依 upstream 正式安裝方式持久化 config home。Helper 不會自動改寫其他人的排程。
-
-## 支援與驗證
-
-實測：Linux、Bash 5.2.37、Python 3.13.5。程式保留 Python 3.6+ 語法及 subprocess 相容目標，**未在 Python 3.6 真直譯器或各發行版逐一實測**。測試套件需 Python 3.7+。
-
-```bash
-python3 -S tests/run_all.py --report-dir /tmp/acme-helper-tests
-```
-
-套件附帶本輪實際報告；`tests/review_v110.py` 專門驗證診斷交接、遮蔽、唯讀邊界與雙語流程。案例數不等於程式碼分支覆蓋率；未將所有外部 DNS API、CA、部署目標、通知服務的真實驗證列為完成。
+MIT. See [LICENSE](LICENSE).

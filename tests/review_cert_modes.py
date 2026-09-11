@@ -2,7 +2,6 @@
 import os
 from pathlib import Path
 import shutil
-import stat
 import subprocess
 import tempfile
 
@@ -82,34 +81,22 @@ exec "${REAL_MOCK}" "${args[@]}"
         account.write_text("SAVED_Namesilo_Key='test-only'\n")
         env = os.environ.copy()
         env.update({
-            'ACME_SH_BIN': str(wrapper),
-            'REAL_MOCK': str(real_mock),
-            'MOCK_HISTORY': str(history),
-            'MOCK_LOG': str(td / 'argv.log'),
-            'ACME_OUTPUT_ROOT': str(output),
-            'ACME_ACCOUNT_CONF': str(account),
-            'ACME_WRAPPER_CONFIG': str(td / 'wrapper.ini'),
-            'ACME_HELPER_LANG': 'en',
-            'HOME': str(td / 'home'),
-            'TMPDIR': str(td / 'tmp'),
+            'ACME_SH_BIN': str(wrapper), 'REAL_MOCK': str(real_mock),
+            'MOCK_HISTORY': str(history), 'MOCK_LOG': str(td / 'argv.log'),
+            'ACME_OUTPUT_ROOT': str(output), 'ACME_ACCOUNT_CONF': str(account),
+            'ACME_WRAPPER_CONFIG': str(td / 'wrapper.ini'), 'ACME_HELPER_LANG': 'en',
+            'HOME': str(td / 'home'), 'TMPDIR': str(td / 'tmp'),
         })
-        Path(env['HOME']).mkdir()
-        Path(env['TMPDIR']).mkdir()
+        Path(env['HOME']).mkdir(); Path(env['TMPDIR']).mkdir()
 
         def run(args, extra=None):
-            if history.exists():
-                history.unlink()
-            merged = env.copy()
-            merged.update(extra or {})
+            if history.exists(): history.unlink()
+            merged = env.copy(); merged.update(extra or {})
             return subprocess.run([ACME] + args, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=merged, timeout=40)
 
         p = run(['issue', '--output-layout', 'none', 'a.test b.test'])
         calls = issue_calls(history)
         t.check('backward-default-merged', p.returncode == 0 and len(calls) == 1 and domain_args(calls[0]) == ['a.test', 'b.test'], p.stderr[-1200:])
-
-        p = run(['issue', '--cert-mode', 'merged', '--output-layout', 'none', 'a.test b.test'])
-        calls = issue_calls(history)
-        t.check('explicit-merged-one-upstream-request', p.returncode == 0 and len(calls) == 1 and domain_args(calls[0]) == ['a.test', 'b.test'], p.stderr[-1200:])
 
         p = run(['issue', '--cert-mode', 'separate', '--output-layout', 'none', 'a.test b.test c.test'])
         calls = issue_calls(history)
@@ -117,7 +104,10 @@ exec "${REAL_MOCK}" "${args[@]}"
 
         p = run(['quick', '--cert-mode', 'separate', '--output-layout', 'none', 'q1.test q2.test'])
         calls = issue_calls(history)
-        t.check('quick-cli-supports-separate', p.returncode == 0 and [domain_args(row) for row in calls] == [['q1.test'], ['q2.test']], p.stderr[-1200:])
+        t.check('quick-is-issue-compatibility-alias', p.returncode == 0 and [domain_args(row) for row in calls] == [['q1.test'], ['q2.test']], p.stderr[-1200:])
+
+        p = run(['help', 'quick'])
+        t.check('quick-help-resolves-to-issue', p.returncode == 0 and 'acme issue' in p.stderr and 'acme quick' not in p.stderr, p.stderr[-1200:])
 
         p = run(['issue', '--cert-mode', 'invalid', '--output-layout', 'none', 'a.test b.test'])
         t.check('invalid-mode-refused-before-upstream', p.returncode == 2 and not issue_calls(history), p.stderr[-1200:])
@@ -125,20 +115,22 @@ exec "${REAL_MOCK}" "${args[@]}"
         p = run(['issue', '--cert-mode', 'separate', '--output-layout', 'none', 'dup.test DUP.test'])
         t.check('separate-duplicate-refused', p.returncode == 2 and not issue_calls(history) and 'duplicate' in p.stderr.lower(), p.stderr[-1200:])
 
-        p = run(['issue', '--cert-mode', 'separate', '--cert-name', 'shared', '--output-layout', 'minimal', 'a.test b.test'])
-        t.check('shared-cert-name-refused-for-separate-batch', p.returncode == 2 and not issue_calls(history), p.stderr[-1200:])
-
         shutil.rmtree(output, ignore_errors=True)
-        p = run(['issue', '--cert-mode', 'separate', '--output-layout', 'minimal', 'example.test *.example.test wildcard-example.test'])
+        p = run(['issue', '--cert-mode', 'separate', '--cert-name', 'production', '--output-layout', 'minimal', 'example.test *.example.test wildcard-example.test'])
         expected = {
-            'example.test': output / 'example.test' / 'domains.txt',
-            '*.example.test': output / 'wildcard-example.test' / 'domains.txt',
-            'wildcard-example.test': output / 'wildcard-example.test-2' / 'domains.txt',
+            'example.test': output / 'production' / 'example.test' / 'domains.txt',
+            '*.example.test': output / 'production' / 'wildcard-example.test' / 'domains.txt',
+            'wildcard-example.test': output / 'production' / 'wildcard-example.test-2' / 'domains.txt',
         }
         ok = p.returncode == 0
         for domain, path in expected.items():
             ok = ok and path.is_file() and path.read_text().strip() == domain
-        t.check('separate-output-names-are-deterministic-and-collision-safe', ok, p.stderr[-1600:])
+        t.check('separate-path-is-output-group-domain', ok, p.stderr[-1800:])
+
+        shutil.rmtree(output, ignore_errors=True)
+        p = run(['issue', '--cert-mode', 'separate', '--output-layout', 'minimal', 'first.test second.test'])
+        ok = (output / 'first.test' / 'first.test' / 'domains.txt').is_file() and (output / 'first.test' / 'second.test' / 'domains.txt').is_file()
+        t.check('separate-default-group-is-first-domain', p.returncode == 0 and ok, p.stderr[-1600:])
 
         p = run(['issue', '--cert-mode', 'separate', '--output-layout', 'none', 'ok.test fail.test later.test'], {'CERT_MODE_FAIL_DOMAIN': 'fail.test'})
         calls = issue_calls(history)

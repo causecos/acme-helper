@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ACME Helper core v1.10.1
+# ACME Helper core
 # Python 3.6+ standard-library-only interactive frontend for acme.sh.
 
 import sys
@@ -28,7 +28,7 @@ import subprocess
 import tempfile
 import time
 
-VERSION = "1.10.1"
+VERSION = "1.11.0"
 STABLE_ACME_SH_VERSION = "3.1.4"
 INTERFACE_REFERENCE_VERSION = "3.1.5"
 MIN_PYTHON = (3, 6)
@@ -351,15 +351,15 @@ def prompt_secret(label, allow_empty=False):
 
 def usage():
     eprint(_('ACME Helper - make acme.sh approachable without hiding its capabilities.'))
-    eprint(_('Start here: acme (guided menu), acme quick (DNS certificate), acme certs (existing certificates).'))
-    eprint(_('Quick issuance: acme "example.com *.example.com" 120'))
+    eprint(_('Start here: acme (guided menu), acme issue (certificate issuance), acme certs (existing certificates).'))
+    eprint(_('Certificate issuance: acme "example.com *.example.com" 120'))
     eprint(_('Setup: install, config, defaults, language, providers, status'))
     eprint(_('Maintenance: certs, cron, deploy, notify, version, versions, update, switch, rollback, uninstall, diagnose'))
-    eprint(_('Advanced: issue, account, csr, export, ca, hooks, native'))
+    eprint(_('Advanced: account, csr, export, ca, hooks, native'))
     eprint(_('Language: acme --lang zh-TW COMMAND or acme --lang en COMMAND; acme language en saves the preference.'))
     eprint(_('Help: acme COMMAND --help. Native passthrough: acme native [UPSTREAM_ARGS].'))
     eprint(_('Defaults: letsencrypt / dns_namesilo / 120 seconds / ec-256 / minimal output; installation cron is off.'))
-    eprint(_('All names in a single issuance share one certificate. Include the base domain explicitly alongside a wildcard.'))
+    eprint(_('Multiple names can be merged into one SAN certificate or issued as separate certificates.'))
 
 
 def locate_acme_sh():
@@ -477,6 +477,7 @@ def version_cmd(full=False, guided=False):
                   "missing_commands": [], "missing_params": [], "readonly_smoke": "not-run"}
     else:
         compat = compatibility_probe(path, run_readonly=full)
+    print("helper_version={}".format(VERSION))
     print("wrapper_version={}".format(VERSION))
     print("python_version={}.{}.{}".format(sys.version_info[0], sys.version_info[1], sys.version_info[2]))
     print("python_support=>={}.{}".format(MIN_PYTHON[0], MIN_PYTHON[1]))
@@ -1697,7 +1698,7 @@ def parse_issue_cli(args):
 def guided_issue(result):
     result["interactive"] = True
     eprint("")
-    eprint(_('=== Detailed certificate wizard ==='))
+    eprint(_('=== Certificate issuance wizard ==='))
     eprint(_('Supports DNS, webroot, standalone, ALPN, Apache/Nginx, manual DNS, DNS persist, multiple SANs and separate certificates. Enter accepts the default in brackets.'))
     eprint("")
     eprint(_('[1/5] Domains'))
@@ -1722,6 +1723,13 @@ def guided_issue(result):
         eprint(_('  provider：{} ({})').format(selected_provider["name"], selected_provider["id"]))
         if selected_provider["docs"]:
             eprint(_('  docs：{}').format(selected_provider["docs"]))
+        configured = _provider_status(selected_provider, _read_conf_text(resolve_account_conf(find_acme_sh())))
+        if configured not in ("configured", "runtime-ready"):
+            eprint(_('Credential status: {}. This is a local configuration check, not an API authentication test.').format(configured))
+            if sys.stdin.isatty() and selected_provider.get("groups") and prompt_yes_no(_('Configure this DNS provider now?'), "y"):
+                configure_provider(result["dns"])
+            else:
+                eprint(_('Supply the provider credentials through acme config or the upstream environment before issuance.'))
         result["delay"] = prompt_validated_default(_('DNS wait in seconds'), result["delay"], validate_delay)
     elif result["mode"] == "webroot":
         result["validation_value"] = prompt_required(_('Webroot path'))
@@ -1742,11 +1750,11 @@ def guided_issue(result):
     result["layout"] = prompt_validated_default(_('Output layout'), result["layout"], validate_layout)
     if result["layout"] != "none":
         result["output_root"] = prompt_default(_('Output root directory'), result["output_root"])
+        default_name = sanitize_cert_name(domains[0])
         if result["cert_mode"] == "separate" and len(domains) > 1:
-            result["cert_name"] = ""
-            eprint(_('  Separate mode creates one output directory per domain automatically.'))
+            result["cert_name"] = prompt_validated_default(_('Certificate group directory name'), default_name, validate_cert_name)
+            eprint(_('  Separate mode stores each certificate under <output>/<certificate group>/<domain>.'))
         else:
-            default_name = sanitize_cert_name(domains[0])
             result["cert_name"] = prompt_validated_default(_('Certificate directory name'), default_name, validate_cert_name)
     eprint(_('  reloadcmd is optional. It runs after successful issuance and subsequent successful renewals.'))
     result["reloadcmd"] = prompt_line(_('Reload command (optional): '))
@@ -1761,13 +1769,14 @@ def guided_issue(result):
 def _issue_plans(result, domains):
     validate_cert_mode(result.get("cert_mode", "merged"))
     if result["cert_mode"] == "separate" and len(domains) > 1:
-        if result.get("cert_name"):
-            die(_('--cert-name cannot be used with multiple separate certificates; output directory names are generated per domain'))
         validate_separate_domains(domains)
+        group_name = result.get("cert_name") or sanitize_cert_name(domains[0])
+        validate_cert_name(group_name)
         names = separate_cert_names(domains)
+        group_root = os.path.join(result["output_root"], group_name)
         return [
             {"domains": [domain], "cert_name": name,
-             "paths": output_paths(result["output_root"], name, result["layout"])}
+             "paths": output_paths(group_root, name, result["layout"])}
             for domain, name in zip(domains, names)
         ]
     name = result.get("cert_name") or sanitize_cert_name(domains[0])
@@ -3977,42 +3986,6 @@ def configure_dns_wizard():
     return configure_provider(_provider_choice(DEFAULT_DNS))
 
 
-def quick_issue(args):
-    if args:
-        return issue(args)
-    find_acme_sh()
-    refresh_defaults()
-    eprint(_('Quick certificate: enter one or more names; with multiple names you can choose one SAN certificate or separate certificates.'))
-    eprint(_('A wildcard such as *.example.com does not include example.com. Add both when needed.'))
-    spec = prompt_validated_required(_('Domains, separated by spaces'), parse_domains)
-    domains = parse_domains(spec)
-    cert_mode = choose_cert_mode(domains, "merged")
-    provider_id = _provider_choice(DEFAULT_DNS)
-    provider = find_dns_provider(provider_id)
-    configured = _provider_status(provider, _read_conf_text(resolve_account_conf(find_acme_sh())))
-    if configured not in ("configured", "runtime-ready"):
-        eprint(_('Credential status: {}. This is a local configuration check, not an API authentication test.').format(configured))
-        if provider.get("groups") and prompt_yes_no(_('Configure this DNS provider now?'), "y"):
-            configure_provider(provider_id)
-        else:
-            eprint(_('Supply the provider credentials through acme config or the upstream environment before issuance.'))
-    eprint(_('Using saved settings: CA={}, DNS wait={}s, key={}, layout={}, output={}').format(DEFAULT_SERVER, DEFAULT_DELAY, DEFAULT_KEY_LENGTH, DEFAULT_OUTPUT_LAYOUT, DEFAULT_OUTPUT_ROOT))
-    eprint(_('For HTTP validation or custom settings, use the detailed issue wizard from Advanced tools.'))
-    shortcut_result = {
-        "server": DEFAULT_SERVER, "mode": "dns", "dns": provider_id, "delay": DEFAULT_DELAY,
-        "keylength": DEFAULT_KEY_LENGTH, "layout": DEFAULT_OUTPUT_LAYOUT, "output_root": DEFAULT_OUTPUT_ROOT,
-        "cert_name": sanitize_cert_name(domains[0]) if cert_mode == "merged" or len(domains) == 1 else "",
-        "cert_mode": cert_mode, "reloadcmd": "",
-    }
-    show_cli_shortcut(_issue_shortcut_args(shortcut_result, domains))
-    if cert_mode == "separate" and len(domains) > 1:
-        confirmed = prompt_yes_no(_('Start issuing {} separate certificates?').format(len(domains)), "n")
-    else:
-        confirmed = prompt_yes_no(_('Start issuing this certificate?'), "n")
-    if not confirmed:
-        eprint(_('acme: cancelled; no certificate request was sent'))
-        return 0
-    return issue(["-dns", provider_id, "--cert-mode", cert_mode, spec])
 
 
 def _interactive_rollback():
@@ -4033,7 +4006,7 @@ def _interactive_rollback():
 
 def interactive_main():
     handlers = {
-        "quick": lambda: quick_issue([]), "issue": lambda: issue([]),
+        "issue": lambda: issue([]),
         "install": lambda: install_acme_sh([]), "uninstall": lambda: uninstall_cmd([]),
         "certs": lambda: certs_cmd([]), "deploy": lambda: deploy_cmd([]),
         "notify": lambda: notify_cmd([]), "account": lambda: account_cmd([]),
@@ -4053,12 +4026,12 @@ def interactive_main():
     groups = {
         "4": ('Scheduling and notifications', [("cron", 'Automatic renewal switch / run now'), ("notify", 'Notification settings and hooks')]),
         "5": ('Installation and version maintenance', [("install", 'Install acme.sh'), ("version", 'Check environment and compatibility'), ("versions", 'Versions and available backups'), ("update", 'Use the pinned stable version'), ("switch", 'Choose a tag or branch'), ("rollback", 'Restore a program backup'), ("uninstall", 'Uninstall acme.sh; preserve certificates and keys')]),
-        "6": ('Advanced tools', [("issue", 'Detailed certificate wizard / all validation modes'), ("deploy", 'Deploy a managed certificate'), ("account", 'ACME account management'), ("csr", 'CSR and private-key tools'), ("export", 'Export PKCS#12 / PKCS#8'), ("ca", 'CA, chain and validation settings'), ("hooks", 'Browse installed DNS / deploy / notify hooks'), ("diagnose", 'Create a redacted ChatGPT repair handoff'), ("native", 'All upstream commands and parameters')]),
+        "6": ('Advanced tools', [("deploy", 'Deploy a managed certificate'), ("account", 'ACME account management'), ("csr", 'CSR and private-key tools'), ("export", 'Export PKCS#12 / PKCS#8'), ("ca", 'CA, chain and validation settings'), ("hooks", 'Browse installed DNS / deploy / notify hooks'), ("diagnose", 'Create a redacted ChatGPT repair handoff'), ("native", 'All upstream commands and parameters')]),
         "7": ("Preferences", [("preferences", 'Edit saved issuance defaults'), ("language", 'Change interface language'), ("defaults", 'Read effective defaults'), ("status", 'Read DNS credential status'), ("providers", 'Search installed DNS providers')]),
     }
     while True:
         eprint(_('\nACME Helper - certificate management without memorizing parameters'))
-        eprint(_('  1. Quick certificate (DNS API)'))
+        eprint(_('  1. Issue certificate'))
         eprint(_('  2. Certificates: show all SANs / renew / deploy / remove'))
         eprint(_('  3. Configure DNS credentials'))
         eprint(_('  4. Scheduling and notifications'))
@@ -4077,7 +4050,7 @@ def interactive_main():
                 title, options = groups[action]
                 action = choose_action(_(title), options)
             else:
-                action = {"1": "quick", "2": "certs", "3": "dns-config"}.get(action, action)
+                action = {"1": "issue", "2": "certs", "3": "dns-config"}.get(action, action)
             if action not in handlers:
                 eprint(_('Invalid selection. Choose one of the displayed entries.'))
                 continue
@@ -4104,7 +4077,6 @@ def interactive_main():
 
 
 SUBCOMMAND_HELP = {
-    "quick": "acme quick [--cert-mode merged|separate] [\"DOMAIN ...\"]",
     "issue": "acme issue [--cert-mode merged|separate] [--validation MODE] [-dns PROVIDER] [-out DIR] [-name NAME] [-format LAYOUT] [\"DOMAIN ...\"] [SECONDS] [-- NATIVE_OPTIONS]",
     "install": "acme install [--email EMAIL] [--version TAG|--branch BRANCH] [--cron|--no-cron] [--no-profile]",
     "uninstall": "acme uninstall [--yes]",
@@ -4155,19 +4127,18 @@ def main(argv):
     bind_upstream_environment()
     if not argv:
         return interactive_main()
-    command = argv[0]
+    command = "issue" if argv[0] == "quick" else argv[0]
     if command == "help":
         if len(argv) == 1:
             usage()
             return 0
-        if len(argv) == 2 and argv[1] in SUBCOMMAND_HELP:
-            return subcommand_help(argv[1])
+        if len(argv) == 2 and (argv[1] in SUBCOMMAND_HELP or argv[1] == "quick"):
+            return subcommand_help("issue" if argv[1] == "quick" else argv[1])
         die(_('Usage: acme help [COMMAND]'))
     if command in SUBCOMMAND_HELP and argv[1:] in (["-h"], ["--help"]):
         return subcommand_help(command)
     if command == "language": return language_cmd(argv[1:])
     if command == "diagnose": return diagnose_cmd(argv[1:], guided=(not argv[1:] and sys.stdin.isatty()))
-    if command == "quick": return quick_issue(argv[1:])
     if command == "install": return install_acme_sh(argv[1:])
     if command == "uninstall": return uninstall_cmd(argv[1:])
     if command == "issue": return issue(argv[1:])

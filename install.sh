@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ACME Helper v1.10.1 installer
+# ACME Helper installer
 set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
