@@ -1,97 +1,34 @@
-name: Finalize issue diagnostics fix
+name: Offline regression
 
 on:
   push:
     branches:
-      - fix/issue-failure-diagnostics
+      - main
+      - "fix/**"
+  pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  finalize:
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: fix/issue-failure-diagnostics
-      - name: Apply minimal upstream-log boundary patch
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          path = Path('acme_runtime.py')
-          text = path.read_text()
-          replacement = '''def _explicit_log(argv):
-              """Return (present, path) only for upstream --log after Helper's raw `--` boundary."""
-              items = list(argv)
-              try:
-                  raw = items[items.index("--") + 1:]
-              except ValueError:
-                  return False, ""
-              for index, item in enumerate(raw):
-                  if item.startswith("--log="):
-                      return True, item.split("=", 1)[1]
-                  if item == "--log":
-                      if index + 1 < len(raw) and not str(raw[index + 1]).startswith("-"):
-                          return True, str(raw[index + 1])
-                      return True, ""
-              return False, ""
-          '''
-          replacement = '\n'.join(line[12:] if line.startswith('            ') else line for line in replacement.splitlines())
-          pattern = r'def _explicit_log\(argv\):\n.*?(?=\ndef _private_temp)'
-          text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
-          if count != 1:
-              raise SystemExit('expected exactly one _explicit_log block')
-          path.write_text(text)
-          PY
-      - name: Verify focused security boundary and Python floor
-        run: |
-          python3 -m py_compile acme_runtime.py
-          python3 - <<'PY'
-          import ast
-          import importlib.util
-          from pathlib import Path
-          ast.parse(Path('acme_runtime.py').read_text(), feature_version=(3, 6))
-          spec = importlib.util.spec_from_file_location('acme_runtime', 'acme_runtime.py')
-          runtime = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(runtime)
-          assert runtime._explicit_log(['issue', '--log', '/tmp/decoy']) == (False, '')
-          assert runtime._explicit_log(['issue', '--', '--log', '/tmp/upstream.log']) == (True, '/tmp/upstream.log')
-          assert runtime._explicit_log(['issue', '--', '--log=/tmp/upstream.log']) == (True, '/tmp/upstream.log')
-          print('FOCUSED_SECURITY 3/3')
-          PY
-      - name: Update runtime checksum
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import hashlib
-          runtime = Path('acme_runtime.py')
-          digest = hashlib.sha256(runtime.read_bytes()).hexdigest()
-          manifest = Path('SHA256SUMS')
-          lines = manifest.read_text().splitlines()
-          matches = [i for i, line in enumerate(lines) if line.endswith('  ./acme_runtime.py')]
-          if len(matches) != 1:
-              raise SystemExit('expected exactly one acme_runtime.py checksum entry')
-          lines[matches[0]] = digest + '  ./acme_runtime.py'
-          manifest.write_text('\n'.join(lines) + '\n')
-          PY
-      - name: Restore normal CI workflow before checksum gate
-        run: git show "${GITHUB_SHA}^:.github/workflows/offline-regression.yml" > .github/workflows/offline-regression.yml
-      - name: Require complete repository checksum manifest
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Verify repository checksums
         run: sha256sum -c SHA256SUMS
-      - name: Run full offline regression
+      - name: Prepare system fallback fixture path
         run: |
           sudo install -d -m 755 /usr/local/lib/acme
           sudo chown "$(id -u):$(id -g)" /usr/local/lib/acme
-          python3 -S tests/run_all.py --report-dir test-results
-      - name: Commit only after every gate passes
+      - name: Run full offline regression
+        run: python3 -S tests/run_all.py --report-dir test-results
+      - name: Print regression logs on failure
+        if: failure() && hashFiles('test-results/*.log') != ''
         run: |
-          mkdir -p .validation
-          : > .validation/full-regression-passed
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add acme_runtime.py SHA256SUMS .github/workflows/offline-regression.yml .validation/full-regression-passed
-          git commit -m "fix: harden issue diagnostic evidence boundary"
-          git push origin HEAD:fix/issue-failure-diagnostics
+          for file in test-results/*.log; do
+            echo "===== $file ====="
+            cat "$file"
+          done
