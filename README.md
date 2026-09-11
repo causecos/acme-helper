@@ -4,6 +4,8 @@
 
 Repository：`acme-helper`。指令：`acme`。
 
+> **專案關係與授權**：ACME Helper 是獨立、非官方的第三方專案，不隸屬於、也未獲 [acme.sh](https://github.com/acmesh-official/acme.sh)／acmesh-official 官方背書或維護。本倉庫不內嵌或重新發布 acme.sh 原始碼，而是透過外部 CLI／執行介面操作已安裝或由使用者明確要求安裝的上游 acme.sh。ACME Helper 自身採 [MIT License](LICENSE)；acme.sh 是獨立上游專案，依其自身 GPLv3 授權條款發布。
+
 **宗旨：讓初學者不用記一堆參數就能使用 acme.sh，也讓專業人員能快速、可預測地維運。**
 
 Helper 是 acme.sh 的引導前端，不重新實作 ACME、DNS 驗證或憑證資料庫。一般工作從任務選單完成；既有短指令和原生參數入口保留。
