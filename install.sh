@@ -23,8 +23,8 @@ if ! command -v install >/dev/null 2>&1; then
   printf 'ACME Helper installer: the POSIX install utility is required\n' >&2
   exit 2
 fi
-if [[ ! -r "$SCRIPT_DIR/acme" || ! -r "$SCRIPT_DIR/acme_cli.py" ]]; then
-  printf 'ACME Helper installer: acme and acme_cli.py must be beside install.sh\n' >&2
+if [[ ! -r "$SCRIPT_DIR/acme" || ! -r "$SCRIPT_DIR/acme_cli.py" || ! -r "$SCRIPT_DIR/acme_runtime.py" ]]; then
+  printf 'ACME Helper installer: acme, acme_cli.py and acme_runtime.py must be beside install.sh\n' >&2
   exit 2
 fi
 
@@ -38,6 +38,7 @@ install -d -m 755 "$BINDIR" "$LIBDIR" "$LIBDIR/locales"
 install -m 644 "$SCRIPT_DIR/locales/en.json" "$LIBDIR/locales/en.json"
 install -m 644 "$SCRIPT_DIR/locales/zh-TW.json" "$LIBDIR/locales/zh-TW.json"
 install -m 755 "$SCRIPT_DIR/acme_cli.py" "$LIBDIR/acme_cli.py"
+install -m 755 "$SCRIPT_DIR/acme_runtime.py" "$LIBDIR/acme_runtime.py"
 install -m 755 "$SCRIPT_DIR/acme" "$BINDIR/acme"
 
 printf 'Installed ACME Helper to %s\n' "$BINDIR/acme"

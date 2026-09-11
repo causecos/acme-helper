@@ -5,7 +5,9 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 PREFIX_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
 PREFIX_CORE="$PREFIX_DIR/lib/acme/acme_cli.py"
+PREFIX_RUNTIME="$PREFIX_DIR/lib/acme/acme_runtime.py"
 CORE=''
+RUNTIME=''
 
 if [ -r "$SCRIPT_DIR/acme_cli.py" ]; then
   CORE="$SCRIPT_DIR/acme_cli.py"
@@ -18,10 +20,21 @@ else
   exit 1
 fi
 
+if [ -r "$SCRIPT_DIR/acme_runtime.py" ]; then
+  RUNTIME="$SCRIPT_DIR/acme_runtime.py"
+elif [ -r "$PREFIX_RUNTIME" ]; then
+  RUNTIME="$PREFIX_RUNTIME"
+elif [ -r /usr/local/lib/acme/acme_runtime.py ]; then
+  RUNTIME=/usr/local/lib/acme/acme_runtime.py
+else
+  printf 'acme: acme_runtime.py not found; reinstall ACME Helper\n' >&2
+  exit 1
+fi
+
 if ! command -v python3 >/dev/null 2>&1; then
   printf 'acme: python3 is required\n' >&2
   exit 1
 fi
 
 export ACME_HELPER_LAUNCHER_PATH="$SCRIPT_DIR/acme"
-exec python3 -S "$CORE" "$@"
+exec python3 -S "$RUNTIME" "$CORE" "$@"
