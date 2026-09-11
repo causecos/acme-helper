@@ -17,6 +17,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: fix/multi-domain-cert-mode
+      - name: Repair embedded test quoting
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/apply-cert-mode-fix.py')
+          text = path.read_text()
+          old_open = "        wrapper.write_text(r'''#!/usr/bin/env bash"
+          new_open = '        wrapper.write_text(r"""#!/usr/bin/env bash'
+          old_close = "exec \"${REAL_MOCK}\" \"${args[@]}\"\n''')\n        wrapper.chmod(0o755)"
+          new_close = 'exec "${REAL_MOCK}" "${args[@]}"\n""")\n        wrapper.chmod(0o755)'
+          if text.count(old_open) != 1 or text.count(old_close) != 1:
+              raise SystemExit('embedded test quoting anchors changed')
+          path.write_text(text.replace(old_open, new_open, 1).replace(old_close, new_close, 1))
+          PY
+          python3 -m py_compile tools/apply-cert-mode-fix.py
       - name: Apply deterministic patch
         run: python3 tools/apply-cert-mode-fix.py
       - name: Syntax and manifest
