@@ -133,6 +133,34 @@ def main():
         transient = list(temp_root.glob("acme-helper-upstream-issue-*.log")) + list(temp_root.glob("acme-helper-issue-failure-*.log"))
         t.check("security", "owned-raw-temporary-files-removed", not transient, transient)
 
+        # The core accepts --lang=VALUE as well as --lang VALUE. The runtime wrapper
+        # must classify that form as an issue too, otherwise automatic diagnostics are bypassed.
+        if final.exists():
+            final.unlink()
+        issue_history.write_text("")
+        equals_env = dict(failed_env, ACME_HELPER_LANG="zh-TW")
+        p = call(["--lang=en"] + issue_args, equals_env)
+        calls = history_lines(issue_history)
+        t.check("compatibility", "lang-equals-issue-still-wrapped", p.returncode == 17 and len(calls) == 1 and final.is_file(), p.stderr[-1800:])
+        t.check("ux", "lang-equals-controls-runtime-message-language", "redacted issue-failure diagnostic saved" in p.stderr, p.stderr[-1800:])
+
+        # Force the redacted-final replace to fail after diagnose itself succeeds. This
+        # exercises the private raw-fallback persistence path, including its constant name,
+        # while preserving the original upstream exit code.
+        if final.exists():
+            final.unlink()
+        final.mkdir()
+        if raw_fallback.exists():
+            raw_fallback.unlink()
+        p = call(issue_args, failed_env)
+        raw_mode = stat.S_IMODE(raw_fallback.stat().st_mode) if raw_fallback.exists() else -1
+        t.check("correctness", "post-diagnose-fallback-preserves-issue-code", p.returncode == 17, p.stderr[-1800:])
+        t.check("security", "post-diagnose-fallback-persists-private-raw", raw_fallback.is_file() and raw_mode == 0o600, p.stderr[-1800:])
+        t.check("ux", "post-diagnose-fallback-warns-not-redacted", "not redacted" in p.stderr and "Do not share it directly" in p.stderr, p.stderr[-1800:])
+        final.rmdir()
+        if raw_fallback.exists():
+            raw_fallback.unlink()
+
         success_env = dict(env, MOCK_ISSUE_RC="0")
         p = call(issue_args, success_env)
         t.check("correctness", "successful-issue-exit-code", p.returncode == 0, p.stderr[-1800:])

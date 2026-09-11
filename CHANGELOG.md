@@ -2,6 +2,14 @@
 
 All notable user-visible changes to ACME Helper are recorded here. The project follows Semantic Versioning.
 
+## [1.11.1] - 2026-09-12
+
+### Fixed
+
+- Preserve the original certificate-issuance exit code when redacted diagnostic creation fails after staging and the runtime must retain a private raw fallback.
+- Route `--lang=en issue`, `--lang=zh-TW issue`, and the equivalent `quick` compatibility alias through the same automatic issue-failure diagnostic wrapper as `--lang VALUE`.
+- Remove the stale hard-coded launcher version comment so runtime version output remains the version source of truth.
+
 ## [1.11.0] - 2026-09-12
 
 ### Changed
