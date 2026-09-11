@@ -176,7 +176,7 @@ def _persist_raw_fallback(evidence_path):
         return evidence_path
     try:
         directory = _diagnostic_dir()
-        final_raw = os.path.join(directory, RAW_FALLBACK_NAME)
+        final_raw = os.path.join(directory, RAW_FALLACK_NAME)
         if os.path.lexists(final_raw):
             st = os.lstat(final_raw)
             if not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid():
@@ -303,6 +303,9 @@ def _run_issue(core_path, argv):
 
 
 def main():
+    if sys.version_info < (3, 6):
+        sys.stderr.write("Python 3.6+ is required; found {}.{}\n".format(sys.version_info[0], sys.version_info[1]))
+        return 2
     if len(sys.argv) < 2:
         sys.stderr.write("acme: runtime wrapper requires the acme_cli.py path\n")
         return 2
